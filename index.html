@@ -2,182 +2,702 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TOS Learning Lab - N4 style</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TOS Trainer</title>
 <style>
-:root{--blue:#1f4e79;--blue2:#2e75b6;--bg:#eef1f5;--line:#b7c0cc;--txt:#1b2733;--panel:#fff;--ok:#2e8b57;--warn:#d98e04;--bad:#c0392b}
+:root{
+  --face:#d4d0c8; --face-lt:#e6e3dc; --hl:#ffffff; --shadow:#808080; --dark:#404040;
+  --title1:#0a246a; --title2:#3a6ea5; --sel:#316ac5; --ink:#000; --muted:#555;
+  --exp:#3f8f5a; --imp:#c0702e; --mty:#8a8a8a; --hold:#c0262d; --win:#fff;
+}
 *{box-sizing:border-box}
-body{margin:0;font:12px/1.35 Tahoma,Segoe UI,Arial,sans-serif;color:var(--txt);background:var(--bg);height:100vh;display:flex;flex-direction:column}
-#top{background:linear-gradient(#2a5f93,var(--blue));color:#fff;display:flex;align-items:center;gap:14px;padding:4px 10px}
-#top b{font-size:14px;letter-spacing:.5px}
-#menu span{margin-right:12px;opacity:.9}
-#sim{margin-left:auto;display:flex;gap:6px;align-items:center}
-button{font:inherit;border:1px solid #7f93aa;background:linear-gradient(#fff,#dde4ee);padding:3px 9px;border-radius:2px;cursor:pointer;color:var(--txt)}
-button:hover{background:#e8eef7}
-#main{flex:1;display:flex;min-height:0}
-#nav{width:190px;background:var(--panel);border-right:1px solid var(--line);overflow:auto}
-#nav h4{margin:0;padding:5px 8px;background:#dfe6ef;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;color:#46586b}
-#nav a{display:block;padding:5px 14px;cursor:pointer;border-bottom:1px solid #f0f2f5}
-#nav a:hover{background:#eaf2fb}#nav a.on{background:var(--blue2);color:#fff}
-#view{flex:1;overflow:auto;padding:10px}
-#kpi{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
-.card{background:var(--panel);border:1px solid var(--line);padding:6px 12px;min-width:120px}
-.card small{display:block;color:#5b6b7c;text-transform:uppercase;font-size:10px}.card b{font-size:18px}
-table{border-collapse:collapse;width:100%;background:var(--panel)}
-th{background:#dfe6ef;text-align:left;padding:4px 6px;border:1px solid var(--line);font-size:11px;position:sticky;top:0}
-td{padding:3px 6px;border:1px solid #dde3ea}
-tr:nth-child(even) td{background:#f7f9fb}
-.pill{padding:1px 6px;border-radius:8px;color:#fff;font-size:10px}
-.IDLE,.DONE,.YARD,.OK{background:var(--ok)}.BUSY,.ACTIVE,.WORKING{background:var(--blue2)}.QUEUED,.INBOUND{background:var(--warn)}.DEPARTED,.LOADED{background:#7a8794}.PAID{background:var(--ok)}.OPEN{background:var(--warn)}
-.row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
-.panel{background:var(--panel);border:1px solid var(--line);padding:8px;margin-bottom:10px}
-.panel h3{margin:0 0 6px;font-size:12px;color:var(--blue);border-bottom:1px solid var(--line);padding-bottom:3px}
-.grid{display:inline-grid;gap:2px}
-.cell{width:30px;height:24px;border:1px solid #aab4c0;background:#f4f6f9;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff}
-.cell.e{color:#9aa6b2}.cell.sel{outline:2px solid #000}
-.IMPORT{background:#2e75b6}.EXPORT{background:#d98e04}.STORAGE{background:#7a5ea8}.REEFER{background:#1a9a9a}.EMPTY{background:#7a8794}
-.lg span{display:inline-block;padding:1px 7px;color:#fff;margin-right:4px;font-size:10px}
-#log{height:92px;overflow:auto;background:#101820;color:#9fe0b0;font:11px Consolas,monospace;padding:4px 8px;border-top:2px solid var(--blue)}
-.note{color:#5b6b7c;font-size:11px;margin:4px 0}
+html,body{margin:0;height:100%}
+body{background:#3a6ea5;font:12px Tahoma,"Segoe UI",Verdana,sans-serif;color:var(--ink)}
+.app{position:absolute;inset:6px;display:grid;grid-template-rows:auto auto auto 1fr auto auto;grid-template-columns:minmax(0,1fr);background:var(--face);
+  border:1px solid;border-color:var(--hl) var(--dark) var(--dark) var(--hl);box-shadow:inset -1px -1px var(--shadow)}
+.titlebar{display:flex;align-items:center;gap:6px;padding:3px 4px;color:#fff;font-weight:bold;
+  background:linear-gradient(90deg,var(--title1),var(--title2))}
+.titlebar .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wbtn{width:16px;height:14px;background:var(--face);color:#000;font:bold 9px Tahoma;display:grid;place-items:center;
+  border:1px solid;border-color:var(--hl) var(--dark) var(--dark) var(--hl)}
+.menubar{display:flex;gap:2px;padding:2px 4px;border-bottom:1px solid var(--shadow)}
+.menubar span{padding:2px 6px}
+.menubar span u{text-decoration:underline}
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px;border-bottom:1px solid var(--shadow);box-shadow:0 1px var(--hl)}
+.sep{width:2px;height:20px;border-left:1px solid var(--shadow);border-right:1px solid var(--hl);margin:0 3px}
+button{font:inherit;background:var(--face);padding:3px 10px;cursor:pointer;color:#000;
+  border:1px solid;border-color:var(--hl) var(--dark) var(--dark) var(--hl);box-shadow:inset -1px -1px var(--shadow)}
+button:active,button.on{border-color:var(--dark) var(--hl) var(--hl) var(--dark);box-shadow:inset 1px 1px var(--shadow)}
+button:disabled{color:var(--shadow);text-shadow:1px 1px var(--hl);cursor:default}
+button.sm{padding:1px 6px}
+button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:1px dotted #000;outline-offset:1px}
+input,select{font:inherit;background:#fff;padding:2px 3px;border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);box-shadow:inset 1px 1px var(--dark)}
+.clock{font-family:"Lucida Console",Consolas,monospace;padding:2px 8px;background:#000;color:#3f3}
+.main{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:0;gap:4px;padding:4px}
+.sunken{background:var(--win);border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);box-shadow:inset 1px 1px var(--dark)}
+nav{overflow:auto;padding:4px 2px}
+nav .grp{margin:2px 0 0 0;padding:2px 4px;font-weight:bold}
+nav .grp::before{content:"\25BE  ";font-size:9px}
+nav a{display:block;padding:1px 4px 1px 22px;color:#000;text-decoration:none;cursor:pointer;white-space:nowrap}
+nav a::before{content:"";display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;background:var(--face);border:1px solid var(--shadow)}
+nav a.cur{background:var(--sel);color:#fff}
+.content{overflow:auto;padding:8px 10px;min-width:0}
+h1{font-size:15px;margin:0 0 2px}
+.concept{color:var(--muted);margin-bottom:6px}
+.help{direction:rtl;text-align:right;background:#ffffe1;border:1px solid #a0a070;padding:5px 8px;margin:6px 0 10px;line-height:1.5}
+fieldset{border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);margin:0 0 10px;padding:6px 8px 8px}
+legend{padding:0 4px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row label{display:flex;gap:4px;align-items:center}
+table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10px}
+.grid th{background:var(--face);text-align:left;font-weight:normal;padding:2px 6px;white-space:nowrap;position:sticky;top:0;
+  border:1px solid;border-color:var(--hl) var(--dark) var(--dark) var(--hl)}
+.grid td{padding:2px 6px;border-bottom:1px solid #e8e8e8;white-space:nowrap}
+.grid tr:hover td{background:#eef3fb}
+.grid tr.sel td{background:var(--sel);color:#fff}
+.grid td.num,.grid th.num{text-align:right}
+.mono{font-family:"Lucida Console",Consolas,monospace}
+.tag{display:inline-block;padding:0 5px;border:1px solid #0003;font-size:11px;line-height:15px}
+.st-PLANNED{background:#fff3c4}.st-DISPATCHED{background:#c8dcff}.st-COMPLETE{background:#d4efd4}
+.st-REJECTED,.st-HOLD{background:#f7c9c9}.st-DRAFT{background:#eee}.st-FINAL{background:#c8dcff}.st-PAID{background:#d4efd4}
+.ph-INBOUND{background:#eee}.ph-ARRIVED{background:#fff3c4}.ph-WORKING{background:#c8dcff}.ph-COMPLETE{background:#d4efd4}.ph-DEPARTED{background:#ddd;color:#666}
+.c-EXPORT{color:var(--exp);font-weight:bold}.c-IMPORT{color:var(--imp);font-weight:bold}.c-EMPTY{color:var(--mty);font-weight:bold}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:10px}
+.kpi{background:#fff;padding:6px 8px;border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow)}
+.kpi b{display:block;font-size:20px;font-weight:normal;font-family:"Lucida Console",Consolas,monospace}
+.kpi span{color:var(--muted)}
+.flash{padding:5px 8px;margin-bottom:8px;border:1px solid}
+.flash.ok{background:#e3f4e3;border-color:#6a6}.flash.err{background:#fbe0e0;border-color:#c66}
+.yardwrap{display:grid;grid-template-columns:1fr 280px;gap:10px;align-items:start}
+.blocks{display:flex;flex-wrap:wrap;gap:10px}
+.block{background:#fff;padding:4px 6px 6px;border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow)}
+.block h3{margin:0 0 4px;font-size:12px}
+.bgrid{display:grid;gap:3px}
+.stack{width:44px;height:58px;padding:2px;background:#f2f2f2;border:1px solid #bbb;cursor:pointer;display:flex;flex-direction:column-reverse;gap:1px;position:relative}
+.stack:hover{border-color:#000}
+.stack.cur{outline:2px solid var(--sel);outline-offset:1px}
+.tier{height:11px;border:1px solid #0004}
+.tier.EXPORT{background:var(--exp)}.tier.IMPORT{background:var(--imp)}.tier.EMPTY{background:var(--mty)}
+.tier.held{background-image:repeating-linear-gradient(45deg,transparent 0 3px,var(--hold) 3px 5px)}
+.stack .lbl{position:absolute;top:1px;left:2px;font-size:9px;color:#666}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 10px}
+.legend i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:-1px;border:1px solid #0004}
+.logpane{margin:0 4px 4px;height:92px;overflow:auto;padding:2px 6px;font-family:"Lucida Console",Consolas,monospace;font-size:11px}
+.logpane div{white-space:nowrap}
+.statusbar{display:flex;gap:2px;padding:2px;overflow:hidden}
+.statusbar span{padding:1px 6px;border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);white-space:nowrap}
+.statusbar span:first-child{flex:1;overflow:hidden;text-overflow:ellipsis}
+.map td{white-space:normal;vertical-align:top;line-height:1.45}
+.rtl{direction:rtl;text-align:right}
+.note{color:var(--muted)}
+@media (max-width:760px){
+  .main{grid-template-columns:minmax(0,1fr)}
+  nav{max-height:130px}
+  .yardwrap{grid-template-columns:1fr}
+  .app{inset:0}
+}
 </style>
 </head>
 <body>
-<div id="top"><b>TOS Learning Lab</b><span id="menu"><span>File</span><span>Operations</span><span>Configuration</span><span>Reports</span><span>Help</span></span>
-<div id="sim"><span id="clock"></span><button id="btnRun">Pause</button><button id="btnSpeed">Speed x1</button><button id="btnVessel">New vessel call</button><button id="btnIn">Truck IN</button><button id="btnOut">Truck OUT</button></div></div>
-<div id="main"><div id="nav"></div><div id="view"></div></div>
-<div id="log"></div>
+<div class="app">
+  <div class="titlebar"><span class="t">TOS Trainer &mdash; N4-style Terminal Operating System (educational simulator)</span>
+    <span class="wbtn" aria-hidden="true">_</span><span class="wbtn" aria-hidden="true">&#9633;</span><span class="wbtn" aria-hidden="true">x</span></div>
+  <div class="menubar"><span><u>F</u>ile</span><span><u>V</u>essel</span><span><u>Y</u>ard</span><span><u>G</u>ate</span><span><u>C</u>ontrol</span><span><u>B</u>illing</span><span><u>H</u>elp</span></div>
+  <div class="toolbar">
+    <span class="clock" id="clock"></span>
+    <button data-act="cycle" title="Advance the simulation 15 minutes: equipment finishes and starts jobs">Run 1 cycle (15 min)</button>
+    <button data-act="auto" id="autoBtn" title="Run cycles automatically">Auto-run</button>
+    <button data-act="day" title="Jump one day ahead (storage days grow)">+1 day</button>
+    <span class="sep"></span>
+    <button data-act="save">Save</button>
+    <button data-act="reset">Reset demo</button>
+  </div>
+  <div class="main">
+    <nav class="sunken" id="nav"></nav>
+    <div class="content sunken" id="content"></div>
+  </div>
+  <div class="logpane sunken" id="log" aria-label="Event log"></div>
+  <div class="statusbar" id="status"></div>
+</div>
+
 <script>
-// Educational simulator inspired by public descriptions of container-terminal operating systems.
-// Not affiliated with, and contains no code or assets from, any commercial TOS.
-const LINES=['MAE','MSC','CMA','ZIM','HPL'], CATS=['IMPORT','EXPORT','STORAGE','REEFER','EMPTY'];
-const BLOCKS={A:{bays:8,rows:6,home:'IMPORT'},B:{bays:8,rows:6,home:'STORAGE'},C:{bays:6,rows:4,home:'REEFER'},D:{bays:8,rows:6,home:'EXPORT'}};
-const MAXTIER=4, TICKS_PER_DAY=60, FREE_DAYS=3, LIFT_FEE=150, STORAGE_FEE=20;
-let S, running=true, speed=1, view='yard', selBlock='A', selCell=null, timer=null;
+'use strict';
+// ---------- constants ----------
+const KEY = 'tos-trainer-v1';
+const T0 = Date.UTC(2026, 9, 22, 6, 0);           // simulation start, shown in UTC
+const CYCLE_MIN = 15, MAX_TIER = 4;
+const BLOCKS = [
+  { id: 'A', use: ['EXPORT'], bays: 6, rows: 2 },
+  { id: 'B', use: ['EXPORT'], bays: 6, rows: 2 },
+  { id: 'C', use: ['IMPORT'], bays: 6, rows: 2 },
+  { id: 'D', use: ['IMPORT', 'EMPTY'], bays: 6, rows: 2 },
+];
+const LINES = { BLU: 'Blue Ocean Lines', RED: 'Red Anchor Shipping', GRN: 'Green Wave Carriers' };
+const OWNER = { BLU: 'BOLU', RED: 'RASU', GRN: 'GWCU' };
+const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer" };
+const PAGES = [
+  ['Terminal', [['overview', 'Overview']]],
+  ['Vessel', [['vessels', 'Vessel Visits']]],
+  ['Yard', [['yard', 'Yard View'], ['inventory', 'Unit Inventory']]],
+  ['Gate', [['gate', 'Gate Transactions']]],
+  ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
+  ['Billing', [['billing', 'Charges & Invoices']]],
+  ['Help', [['mapping', 'How it maps to N4']]],
+];
 
-function rnd(n){return Math.floor(Math.random()*n)}
-function pad(n,w){return String(n).padStart(w,'0')}
-function ctrId(){return LINES[rnd(LINES.length)].slice(0,3)+'U'+pad(rnd(9999999),7)}
-function log(m){S.log.push(`[${fmtClock()}] ${m}`);if(S.log.length>200)S.log.shift();const l=document.getElementById('log');l.innerHTML=S.log.slice(-40).map(x=>x).join('<br>');l.scrollTop=l.scrollHeight}
-function fmtClock(){const d=Math.floor(S.tick/TICKS_PER_DAY),h=Math.floor((S.tick%TICKS_PER_DAY)/TICKS_PER_DAY*24);return `Day ${d+1} ${pad(h,2)}:00`}
+let S;                                    // simulation state (saved)
+const UI = { page: 'overview', stack: null, msg: null, unit: null };
+let autoTimer = null;
 
-function init(){
-  S={tick:0,units:{},yard:{},jobs:[],jobSeq:1,vessels:[],invoices:[],log:[],stats:{moves:0,rehandles:0,gateIn:0,gateOut:0},
-   equip:[...['QC1','QC2'].map(id=>({id,type:'QC'})),...['AGV1','AGV2','AGV3','AGV4'].map(id=>({id,type:'AGV'})),...Object.keys(BLOCKS).map(b=>({id:'ASC-'+b,type:'ASC',block:b}))]
-     .map(e=>({...e,state:'IDLE',job:null,ticks:0,moves:0})),vesSeq:1};
-  newVessel();
-  for(let i=0;i<14;i++){const u=mkUnit(i<6?'IMPORT':i<10?'EXPORT':i<12?'REEFER':'STORAGE');const s=findSlot(blockFor(u.cat));if(s){place(u,s);u.state='YARD'}}
-  log('System initialised. Yard pre-loaded.');
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US');
+function fmt(min) {
+  const d = new Date(T0 + min * 60000);
+  const mon = d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' });
+  return String(d.getUTCDate()).padStart(2, '0') + '-' + mon + ' ' +
+    String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
 }
-function mkUnit(cat,vessel){const id=ctrId();return S.units[id]={id,cat,line:LINES[rnd(LINES.length)],size:Math.random()<.7?'40':'20',weight:(8+rnd(20))+'t',state:'INBOUND',loc:null,vessel:vessel||null,since:S.tick,moves:0}}
-function blockFor(cat){return Object.keys(BLOCKS).find(b=>BLOCKS[b].home===cat)||'B'}
-function newVessel(){
-  const v={id:'MV'+pad(S.vesSeq++,3),name:['ATLAS','NOVA','HAIFA STAR','ORION','LEVANT'][rnd(5)],state:'WORKING',discharge:[],load:[]};
-  for(let i=0;i<10;i++){v.discharge.push(mkUnit(Math.random()<.2?'REEFER':'IMPORT',v.id).id)}
-  for(let i=0;i<8;i++){const u=mkUnit('EXPORT',v.id);u.state='BOOKED';v.load.push(u.id)}
-  S.vessels.push(v);log(`Vessel call ${v.id} ${v.name} berthed: ${v.discharge.length} to discharge, ${v.load.length} export bookings.`);
-}
-function key(b,bay,row){return `${b}-${bay}-${row}`}
-function findSlot(b,start){
-  const cfg=BLOCKS[b];for(let bay=0;bay<cfg.bays;bay++)for(let row=0;row<cfg.rows;row++){const k=key(b,bay,row);const h=(S.yard[k]||[]).length+(S.reserved&&S.reserved[k]||0);if(h<MAXTIER)return {b,bay,row,k}}
-  return null}
-function place(u,s){(S.yard[s.k]=S.yard[s.k]||[]).push(u.id);u.loc={b:s.b,bay:s.bay,row:s.row,k:s.k,tier:S.yard[s.k].length}}
-function remove(u){ // returns number of rehandles
-  const st=S.yard[u.loc.k],i=st.indexOf(u.id);const above=st.length-1-i;
-  S.stats.rehandles+=above;st.splice(i,1);u.loc=null;return above}
+const blockOf = pos => pos ? pos[0] : null;
+const stackKey = (b, bay, row) => `${b}-${String(bay).padStart(2, '0')}-${row}`;
+const posLabel = u => {
+  if (!u.pos) return { ON_VESSEL: 'Vessel', AT_GATE: 'Gate lane', LOADED: 'Vessel', DEPARTED: 'Gone' }[u.state] || '-';
+  return u.pos + '-T' + (S.stacks[u.pos].indexOf(u.id) + 1);
+};
+const visitById = id => S.visits.find(v => v.id === id);
+const daysIn = u => u.inTime == null ? 0 : Math.max(1, Math.ceil(((u.outTime ?? S.clock) - u.inTime) / 1440));
+const storageDue = u => Math.max(0, daysIn(u) - S.tariff.freeDays) * S.tariff.storagePerDay;
 
-// ---- job planning (work instructions) ----
-function hasJob(uid){return S.jobs.some(j=>j.unit===uid&&j.state!=='DONE')}
-function plan(){
-  S.vessels.filter(v=>v.state==='WORKING').forEach(v=>{
-    v.discharge.forEach(id=>{const u=S.units[id];if(u.state==='INBOUND'&&!hasJob(id))addJob('DISCHARGE',u,v.id)});
-    v.load.forEach(id=>{const u=S.units[id];if(u.state==='YARD'&&!hasJob(id))addJob('LOAD',u,v.id)});
-    if(v.discharge.every(i=>S.units[i].state!=='INBOUND')&&v.load.every(i=>S.units[i].state==='LOADED'||S.units[i].state==='BOOKED'&&false)&&!S.jobs.some(j=>j.vessel===v.id&&j.state!=='DONE')){v.state='SAILED';log(`${v.id} completed and sailed.`)}
+// ISO 6346 check digit (letters skip multiples of 11)
+const LETTER = (() => { const m = {}; let v = 10; for (const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { if (v % 11 === 0) v++; m[c] = v++; } return m; })();
+function checkDigit(id10) {
+  let sum = 0;
+  for (let i = 0; i < 10; i++) { const c = id10[i]; sum += (LETTER[c] ?? Number(c)) * 2 ** i; }
+  return (sum % 11) % 10;
+}
+function newCntr(line) { const s = OWNER[line] + String(++S.seq.cntr).padStart(6, '0'); return s + checkDigit(s); }
+
+function log(area, msg) { S.log.push({ t: S.clock, area, msg }); if (S.log.length > 300) S.log.shift(); }
+function flash(type, text) { UI.msg = { type, text }; }
+
+// ---------- state ----------
+function fresh() {
+  S = {
+    clock: 0, auto: false,
+    seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0 },
+    units: {}, stacks: {}, visits: [], wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
+    stats: { rehandles: 0, moves: 0 },
+    tariff: { lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 },
+  };
+  for (const b of BLOCKS) for (let bay = 1; bay <= b.bays; bay++) for (let row = 1; row <= b.rows; row++) S.stacks[stackKey(b.id, bay, row)] = [];
+  ['QC01', 'QC02'].forEach(id => S.eq.push({ id, type: 'QC', desc: 'Quay crane', status: 'IDLE', wi: null, moves: 0 }));
+  ['AGV01', 'AGV02', 'AGV03', 'AGV04'].forEach(id => S.eq.push({ id, type: 'AGV', desc: 'Automated guided vehicle', status: 'IDLE', wi: null, moves: 0 }));
+  BLOCKS.forEach(b => S.eq.push({ id: 'ASC-' + b.id, type: 'ASC-' + b.id, desc: 'Automated stacking crane, block ' + b.id, status: 'IDLE', wi: null, moves: 0 }));
+
+  // seed: an earlier vessel left imports in the yard, some under customs hold
+  const v1 = addVisit('MV Training Star', 'BLU', 60, 8);
+  const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6);
+  for (let i = 0; i < 6; i++) {
+    const u = addUnit({ line: i % 2 ? 'GRN' : 'BLU', category: 'IMPORT', iso: i % 3 ? '22G1' : '45G1', state: 'YARD', inTime: -5 * 1440 - i * 90 });
+    if (i === 1 || i === 4) u.holds.push('CUSTOMS');
+    placeUnit(u, planSlot(u));
+  }
+  for (let i = 0; i < 10; i++) {
+    const u = addUnit({ line: 'RED', category: 'EXPORT', iso: i % 4 ? '22G1' : '45G1', visit: v2.id, state: 'YARD', inTime: -2 * 1440 + i * 60 });
+    placeUnit(u, planSlot(u));
+  }
+  for (let i = 0; i < 4; i++) {
+    const u = addUnit({ line: 'GRN', category: 'EMPTY', iso: '22G1', state: 'YARD', inTime: -1440 });
+    placeUnit(u, planSlot(u));
+  }
+  log('SYSTEM', 'Demo terminal created. ' + v1.vessel + ' due ' + fmt(v1.eta) + ', ' + v2.vessel + ' due ' + fmt(v2.eta) + '.');
+}
+function addUnit(p) {
+  const u = Object.assign({ holds: [], visit: null, pos: null, inTime: null, outTime: null, wi: null, weight: 0 }, p);
+  u.id = newCntr(u.line);
+  u.weight = u.category === 'EMPTY' ? 2.2 : Math.round((8 + Math.random() * 18) * 10) / 10;
+  S.units[u.id] = u;
+  return u;
+}
+function addVisit(vessel, line, etaIn, imports) {
+  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null };
+  S.visits.push(v);
+  for (let i = 0; i < imports; i++) {
+    const u = addUnit({ line, category: 'IMPORT', iso: i % 3 ? '22G1' : (i % 2 ? '45G1' : '22R1'), visit: v.id, state: 'ON_VESSEL' });
+    if (Math.random() < 0.25) u.holds.push('CUSTOMS');
+  }
+  return v;
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage blocked: keep running in memory */ } }
+function load() {
+  try { const raw = localStorage.getItem(KEY); if (raw) { S = JSON.parse(raw); return true; } } catch (e) { /* ignore */ }
+  return false;
+}
+
+// ---------- yard planning (simple rule-based decking) ----------
+const reservedIn = key => S.wis.filter(w => w.status !== 'COMPLETE' && w.dest === key).length;
+const heightOf = key => S.stacks[key].length + reservedIn(key);
+function planSlot(u, excludeKey) {
+  const blocks = BLOCKS.filter(b => b.use.includes(u.category)).map(b => b.id);
+  let best = null, bestScore = Infinity;
+  for (const key of Object.keys(S.stacks)) {
+    if (!blocks.includes(key[0]) || key === excludeKey) continue;
+    const h = heightOf(key);
+    if (h >= MAX_TIER) continue;
+    let score;
+    const st = S.stacks[key].map(id => S.units[id]);
+    if (u.category === 'EXPORT') {
+      // keep one vessel per stack so loading never digs: mixed stacks are a last resort
+      const same = st.every(x => x.visit === u.visit) && S.wis.filter(w => w.dest === key && w.status !== 'COMPLETE').every(w => S.units[w.unit].visit === u.visit);
+      score = h === 0 ? 5 : same ? h * 0.5 : 20 + h;
+    } else {
+      score = h;                    // imports/empties: spread low, pickups come in random order
+    }
+    if (score < bestScore) { bestScore = score; best = key; }
+  }
+  return best;
+}
+function placeUnit(u, key) { S.stacks[key].push(u.id); u.pos = key; }
+// Lift a unit out of its stack. Anything on top gets moved first (a rehandle).
+function retrieve(u, wi) {
+  const st = S.stacks[u.pos];
+  let n = 0;
+  while (st[st.length - 1] !== u.id) {
+    const topId = st.pop(), top = S.units[topId];
+    const sameBlock = Object.keys(S.stacks).filter(k => k[0] === u.pos[0] && k !== u.pos && heightOf(k) < MAX_TIER);
+    const to = sameBlock.sort((a, b) => heightOf(a) - heightOf(b))[0] || planSlot(top, u.pos);
+    placeUnit(top, to);
+    n++;
+    log('YARD', `Rehandle: ${topId} moved ${u.pos} -> ${to} to dig out ${u.id}`);
+  }
+  st.pop();
+  u.pos = null;
+  if (wi) wi.rehandles = n;
+  S.stats.rehandles += n;
+}
+
+// ---------- billing ----------
+function charge(u, type, amount, note) {
+  if (!amount) return;
+  S.charges.push({ id: 'C' + String(++S.seq.chg).padStart(4, '0'), line: u.line, unit: u.id, type, amount, note: note || '', time: S.clock, invoice: null });
+}
+function chargeStorage(u) {
+  const due = storageDue(u);
+  if (due) charge(u, 'STORAGE', due, `${daysIn(u)} days, ${S.tariff.freeDays} free`);
+}
+
+// ---------- work instructions & equipment control ----------
+function newWI(kind, u, extra) {
+  const wi = Object.assign({ id: 'WI' + String(++S.seq.wi).padStart(4, '0'), kind, unit: u.id, status: 'PLANNED', eq: [], dest: null, from: null,
+    created: S.clock, done: null, rehandles: 0, note: '' }, extra);
+  u.wi = wi.id;
+  S.wis.push(wi);
+  return wi;
+}
+function needs(wi, destKey) {
+  const u = S.units[wi.unit];
+  switch (wi.kind) {
+    case 'DISCHARGE': return ['QC', 'AGV', 'ASC-' + blockOf(destKey)];
+    case 'LOAD': return ['ASC-' + blockOf(u.pos), 'AGV', 'QC'];
+    case 'GATE_IN': return ['ASC-' + blockOf(destKey)];
+    case 'GATE_OUT': return ['ASC-' + blockOf(u.pos)];
+  }
+  return [];
+}
+function tryDispatch(wi) {
+  const u = S.units[wi.unit];
+  let dest = null;
+  if (wi.kind === 'DISCHARGE' || wi.kind === 'GATE_IN') {
+    dest = planSlot(u);
+    if (!dest) { wi.note = 'No yard space'; return false; }
+  }
+  const picked = [];
+  for (const type of needs(wi, dest)) {
+    const e = S.eq.find(x => x.type === type && x.status === 'IDLE' && !picked.includes(x));
+    if (!e) { wi.note = 'Waiting for ' + type; return false; }
+    picked.push(e);
+  }
+  picked.forEach(e => { e.status = 'BUSY'; e.wi = wi.id; });
+  wi.eq = picked.map(e => e.id);
+  wi.dest = dest;
+  wi.from = wi.kind === 'DISCHARGE' ? 'Vessel' : wi.kind === 'GATE_IN' ? 'Gate lane' : u.pos;
+  wi.status = 'DISPATCHED';
+  wi.note = '';
+  wi.started = S.clock;
+  log('ECS', `${wi.id} ${wi.kind} ${u.id} sent to ${wi.eq.join(' + ')}`);
+  return true;
+}
+function complete(wi) {
+  const u = S.units[wi.unit];
+  const t = S.tariff;
+  if (wi.kind === 'DISCHARGE') {
+    placeUnit(u, wi.dest); u.state = 'YARD'; u.inTime = S.clock;
+    charge(u, 'LIFT_DISCH', t.lift, 'Vessel discharge');
+  } else if (wi.kind === 'GATE_IN') {
+    placeUnit(u, wi.dest); u.state = 'YARD'; u.inTime = S.clock;
+    charge(u, 'GATE_IN', t.gateFee + t.lift, 'Gate + lift off truck');
+    const tx = S.gate.find(g => g.wi === wi.id); if (tx) tx.status = 'COMPLETE';
+  } else if (wi.kind === 'LOAD') {
+    wi.from = posLabel(u);
+    retrieve(u, wi); u.state = 'LOADED'; u.outTime = S.clock;
+    charge(u, 'LIFT_LOAD', t.lift, 'Vessel load'); chargeStorage(u);
+  } else if (wi.kind === 'GATE_OUT') {
+    wi.from = posLabel(u);
+    retrieve(u, wi); u.state = 'DEPARTED'; u.outTime = S.clock;
+    charge(u, 'GATE_OUT', t.gateFee + t.lift, 'Gate + lift on truck'); chargeStorage(u);
+    const tx = S.gate.find(g => g.wi === wi.id); if (tx) tx.status = 'COMPLETE';
+  }
+  wi.eq.forEach(id => { const e = S.eq.find(x => x.id === id); e.status = 'IDLE'; e.wi = null; e.moves++; });
+  wi.status = 'COMPLETE'; wi.done = S.clock; wi.note = '';
+  u.wi = null;
+  S.stats.moves++;
+  log('ECS', `${wi.id} ${wi.kind} ${u.id} done -> ${wi.kind === 'DISCHARGE' || wi.kind === 'GATE_IN' ? wi.dest : u.state}` + (wi.rehandles ? ` (${wi.rehandles} rehandle${wi.rehandles > 1 ? 's' : ''})` : ''));
+  // an export that arrives while its vessel is working joins the load queue
+  if (wi.kind === 'GATE_IN' && u.category === 'EXPORT') {
+    const v = visitById(u.visit);
+    if (v && v.phase === 'WORKING') newWI('LOAD', u, { visit: v.id });
+  }
+}
+function cycle() {
+  S.clock += CYCLE_MIN;
+  S.wis.filter(w => w.status === 'DISPATCHED').forEach(complete);
+  // vessel arrivals by ETA
+  S.visits.filter(v => v.phase === 'INBOUND' && v.eta <= S.clock).forEach(v => arrive(v));
+  // discharge before load on the same vessel; then by creation order
+  const order = { DISCHARGE: 0, GATE_IN: 1, GATE_OUT: 1, LOAD: 2 };
+  S.wis.filter(w => w.status === 'PLANNED')
+    .sort((a, b) => order[a.kind] - order[b.kind] || a.created - b.created)
+    .forEach(w => {
+      if (w.kind === 'LOAD' && S.wis.some(d => d.kind === 'DISCHARGE' && d.visit === w.visit && d.status !== 'COMPLETE')) { w.note = 'After discharge'; return; }
+      tryDispatch(w);
+    });
+  S.visits.filter(v => v.phase === 'WORKING').forEach(v => {
+    if (!S.wis.some(w => w.visit === v.id && w.status !== 'COMPLETE')) { v.phase = 'COMPLETE'; log('VESSEL', `${v.vessel} (${v.id}) work complete`); }
   });
 }
-function addJob(kind,u,vessel){const j={id:S.jobSeq++,kind,unit:u.id,vessel,state:'QUEUED',res:[],created:S.tick};S.jobs.push(j)}
-function free(type,block){return S.equip.find(e=>e.type===type&&e.state==='IDLE'&&(!block||e.block===block))}
-function dispatch(){
-  S.reserved={};
-  S.jobs.filter(j=>j.state==='QUEUED').forEach(j=>{
-    const u=S.units[j.unit];let need=[],dur=6;
-    if(j.kind==='DISCHARGE'){const b=blockFor(u.cat);const slot=findSlot(b)||findSlot('B');if(!slot)return;j.slot=slot;need=[free('QC'),free('AGV'),free('ASC',slot.b)];
+
+// ---------- vessel ----------
+function arrive(v) { v.phase = 'ARRIVED'; v.ata = S.clock; log('VESSEL', `${v.vessel} (${v.id}) arrived at berth`); }
+function startWork(v) {
+  let d = 0, l = 0;
+  Object.values(S.units).forEach(u => {
+    if (u.visit !== v.id || u.wi) return;
+    if (u.category === 'IMPORT' && u.state === 'ON_VESSEL') { newWI('DISCHARGE', u, { visit: v.id }); d++; }
+    if (u.category === 'EXPORT' && u.state === 'YARD') { newWI('LOAD', u, { visit: v.id }); l++; }
+  });
+  v.phase = 'WORKING';
+  log('VESSEL', `${v.vessel}: work started, ${d} discharge + ${l} load instructions created`);
+  flash('ok', `${d} discharge and ${l} load work instructions created. Run cycles to execute them.`);
+}
+function depart(v) {
+  v.phase = 'DEPARTED'; v.atd = S.clock;
+  let rolled = 0;
+  Object.values(S.units).forEach(u => {
+    if (u.visit !== v.id) return;
+    if (u.state === 'LOADED') u.state = 'DEPARTED';
+    else if (u.category === 'EXPORT' && u.state !== 'DEPARTED') rolled++;
+  });
+  log('VESSEL', `${v.vessel} departed` + (rolled ? `, ${rolled} export(s) rolled (left behind)` : ''));
+}
+
+// ---------- rendering ----------
+function render() {
+  $('clock').textContent = fmt(S.clock);
+  $('autoBtn').classList.toggle('on', !!autoTimer);
+  $('nav').innerHTML = PAGES.map(([g, items]) => `<div class="grp">${g}</div>` +
+    items.map(([id, label]) => `<a data-act="nav" data-id="${id}" class="${UI.page === id ? 'cur' : ''}" tabindex="0">${label}</a>`).join('')).join('');
+  const msg = UI.msg ? `<div class="flash ${UI.msg.type}">${esc(UI.msg.text)}</div>` : '';
+  $('content').innerHTML = msg + (VIEWS[UI.page] || VIEWS.overview)();
+  $('log').innerHTML = S.log.slice(-40).reverse().map(e => `<div>${fmt(e.t)}  [${e.area.padEnd(6)}] ${esc(e.msg)}</div>`).join('');
+  const busy = S.eq.filter(e => e.status === 'BUSY').length;
+  const planned = S.wis.filter(w => w.status === 'PLANNED').length;
+  $('status').innerHTML = `<span>Ready. Educational simulator &ndash; not Navis software, not affiliated with Navis or Kaleris.</span>
+    <span>User: trainee</span><span>Facility: DEMO</span><span>WI planned: ${planned}</span><span>Equipment busy: ${busy}/${S.eq.length}</span>`;
+}
+function header(title, concept, helpHe) {
+  return `<h1>${title}</h1><div class="concept">N4 concept: ${concept}</div><div class="help">${helpHe}</div>`;
+}
+const tag = (cls, text) => `<span class="tag ${cls}">${esc(text)}</span>`;
+const unitLink = id => `<a href="#" data-act="unit" data-id="${id}" class="mono">${id}</a>`;
+
+const VIEWS = {
+  overview() {
+    const units = Object.values(S.units);
+    const inYard = units.filter(u => u.state === 'YARD').length;
+    const slots = Object.keys(S.stacks).length * MAX_TIER;
+    const atBerth = S.visits.filter(v => ['ARRIVED', 'WORKING', 'COMPLETE'].includes(v.phase));
+    const open = S.invoices.filter(i => i.status !== 'PAID').reduce((s, i) => s + i.total, 0);
+    const unbilled = S.charges.filter(c => !c.invoice).reduce((s, c) => s + c.amount, 0);
+    const kpi = (v, l) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`;
+    return header('Terminal Overview', 'Facility dashboard',
+      'זה מסך הסיכום של הנמל. כל מספר כאן הוא תוצאה של מה שקורה במסכים האחרים. כדי להתחיל: לחץ "Run 1 cycle" כמה פעמים (כל לחיצה = רבע שעה), האונייה הראשונה תגיע, ואז עבור ל-Vessel Visits ולחץ Start work.') +
+      `<div class="kpis">${kpi(inYard + ' / ' + slots, 'Units in yard / slots')}${kpi(Math.round(inYard / slots * 100) + '%', 'Yard occupancy')}
+      ${kpi(atBerth.length, 'Vessels at berth')}${kpi(S.wis.filter(w => w.status !== 'COMPLETE').length, 'Open work instructions')}
+      ${kpi(S.stats.moves, 'Moves completed')}${kpi(S.stats.rehandles, 'Rehandles (wasted moves)')}
+      ${kpi(money(unbilled), 'Charges not yet invoiced')}${kpi(money(open), 'Invoices not paid')}</div>
+      <fieldset><legend>Vessels</legend>${visitTable(S.visits.filter(v => v.phase !== 'DEPARTED'))}</fieldset>
+      <fieldset><legend>Units by category and state</legend>${unitSummary(units)}</fieldset>`;
+  },
+  vessels() {
+    return header('Vessel Visits', 'Vessel Visit (phases inbound / arrived / working / complete / departed)',
+      'כל אונייה שמגיעה לנמל היא "ביקור". קודם היא בדרך (INBOUND), מגיעה לרציף (ARRIVED), מתחילים לפרוק ולהעמיס (WORKING), מסיימים (COMPLETE) ויוצאת (DEPARTED). Start work יוצר רשימת משימות לעגורנים: לפרוק את המכולות שעל האונייה ולהעמיס את מכולות הייצוא שמחכות בחצר.') +
+      `<fieldset><legend>Create vessel visit</legend><form class="row" data-form="visit">
+        <label>Vessel <input name="vessel" required maxlength="30" value="MV Quay Example"></label>
+        <label>Line <select name="line">${Object.keys(LINES).map(l => `<option value="${l}">${l} - ${LINES[l]}</option>`)}</select></label>
+        <label>ETA in hours <input name="eta" type="number" min="0" max="240" value="2" style="width:60px"></label>
+        <label>Import units on board <input name="imports" type="number" min="0" max="20" value="6" style="width:60px"></label>
+        <button>Create</button></form></fieldset>` + visitTable(S.visits, true);
+  },
+  yard() {
+    const sel = UI.stack;
+    const blocks = BLOCKS.map(b => {
+      let cells = '';
+      for (let row = 1; row <= b.rows; row++) for (let bay = 1; bay <= b.bays; bay++) {
+        const key = stackKey(b.id, bay, row);
+        const tiers = S.stacks[key].map(id => { const u = S.units[id]; return `<div class="tier ${u.category} ${u.holds.length ? 'held' : ''}" title="${id}"></div>`; }).join('');
+        cells += `<div class="stack ${sel === key ? 'cur' : ''}" data-act="stack" data-id="${key}" title="${key}: ${S.stacks[key].length}/${MAX_TIER}"><span class="lbl">${String(bay).padStart(2, '0')}-${row}</span>${tiers}</div>`;
       }
-    else if(j.kind==='LOAD'){if(!u.loc)return;need=[free('ASC',u.loc.b),free('AGV'),free('QC')]}
-    else if(j.kind==='GATE_IN'){const slot=findSlot('D')||findSlot('B');if(!slot)return;j.slot=slot;need=[free('ASC',slot.b)];dur=4}
-    else if(j.kind==='GATE_OUT'){if(!u.loc)return;need=[free('ASC',u.loc.b)];dur=4}
-    if(need.some(x=>!x))return;
-    need.forEach(e=>{e.state='BUSY';e.job=j.id;e.ticks=dur});j.res=need.map(e=>e.id);j.state='ACTIVE';j.ticks=dur;
-    if(j.slot){S.reserved[j.slot.k]=(S.reserved[j.slot.k]||0)+1}
-  });
+      return `<div class="block"><h3>Block ${b.id} <span class="note">(${b.use.join(' + ')})</span></h3>
+        <div class="bgrid" style="grid-template-columns:repeat(${b.bays},44px)">${cells}</div></div>`;
+    }).join('');
+    let side = '<p class="note">Click a stack to see what is inside.</p>';
+    if (sel) {
+      const st = S.stacks[sel];
+      side = `<b>Stack ${sel}</b> (${st.length}/${MAX_TIER} tiers)<table class="grid"><tr><th>Tier</th><th>Unit</th><th>Cat.</th><th>Vessel</th></tr>` +
+        st.map((id, i) => { const u = S.units[id]; return { i, u }; }).reverse().map(({ i, u }) =>
+          `<tr><td>T${i + 1}</td><td>${unitLink(u.id)}${u.holds.length ? ' ' + tag('st-HOLD', 'HOLD') : ''}</td><td class="c-${u.category}">${u.category}</td><td>${u.visit ? esc(visitById(u.visit)?.vessel || u.visit) : '-'}</td></tr>`).join('') +
+        '</table><p class="note">Top of the stack is first. To take out a lower box, the crane must first move everything above it (a rehandle).</p>';
+    }
+    return header('Yard View', 'Yard blocks, stacks and tiers; Expert Decking (rule-based slot choice)',
+      'החצר מחולקת לבלוקים, וכל בלוק לערימות. כל ריבוע קטן הוא מכולה, והערימה בגובה עד 4. ירוק = ייצוא, כתום = יבוא, אפור = ריקה, פסים אדומים = עיכוב מכס. המערכת בוחרת מקום לבד לפי חוק פשוט: מכולות של אותה אונייה נערמות יחד, כדי שבהעמסה לא יצטרכו לחפור.') +
+      `<div class="legend"><span><i style="background:var(--exp)"></i>Export</span><span><i style="background:var(--imp)"></i>Import</span><span><i style="background:var(--mty)"></i>Empty</span><span><i class="tier held" style="background-color:var(--imp)"></i>On hold</span></div>
+      <div class="yardwrap"><div class="blocks">${blocks}</div><div>${side}</div></div>`;
+  },
+  inventory() {
+    const units = Object.values(S.units).filter(u => u.state !== 'DEPARTED' || UI.showGone);
+    return header('Unit Inventory', 'Units (containers) with category, freight kind, position, holds',
+      'כל מכולה במערכת. המספר שלה בנוי כמו מספר אמיתי: 4 אותיות של הבעלים, 6 ספרות, וספרת ביקורת בסוף (מחושבת בנוסחה של תקן ISO 6346). כאן גם משחררים עיכוב מכס, ורואים כמה ימים המכולה כבר בחצר וכמה אחסנה היא צוברת.') +
+      `<p><label><input type="checkbox" data-act="showGone" ${UI.showGone ? 'checked' : ''}> Show departed units</label></p>
+      <table class="grid"><tr><th>Unit</th><th>Type</th><th>Cat.</th><th>Line</th><th>Vessel visit</th><th>State</th><th>Position</th><th class="num">Tons</th><th class="num">Days</th><th class="num">Storage so far</th><th>Holds</th><th>Open WI</th></tr>` +
+      units.map(u => `<tr class="${UI.unit === u.id ? 'sel' : ''}"><td>${unitLink(u.id)}</td><td>${u.iso} <span class="note">${ISO[u.iso]}</span></td><td class="c-${u.category}">${u.category}</td>
+        <td>${u.line}</td><td>${u.visit ? esc(visitById(u.visit)?.vessel || '') + ' ' + u.visit : '-'}</td><td>${u.state}</td><td class="mono">${posLabel(u)}</td>
+        <td class="num">${u.weight}</td><td class="num">${u.inTime != null ? daysIn(u) : '-'}</td><td class="num">${u.inTime != null ? money(storageDue(u)) : '-'}</td>
+        <td>${u.holds.map(h => tag('st-HOLD', h) + ` <button class="sm" data-act="release" data-id="${u.id}">Release</button>`).join('')}</td><td>${u.wi || ''}</td></tr>`).join('') + '</table>';
+  },
+  gate() {
+    const open = S.visits.filter(v => !['DEPARTED'].includes(v.phase));
+    const pickups = Object.values(S.units).filter(u => u.state === 'YARD' && !u.wi && u.category !== 'EXPORT');
+    return header('Gate Transactions', 'Gate: truck visits, receive export / deliver import, hold checks',
+      'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר.') +
+      `<fieldset><legend>Receive (gate in)</legend><form class="row" data-form="gatein">
+        <label>Type <select name="kind"><option value="EXPORT">Export full, booked to vessel</option><option value="EMPTY">Empty return</option></select></label>
+        <label>Vessel visit <select name="visit">${open.map(v => `<option value="${v.id}">${v.id} ${esc(v.vessel)} (${v.phase})</option>`).join('')}</select></label>
+        <label>Line <select name="line">${Object.keys(LINES).map(l => `<option>${l}</option>`)}</select></label>
+        <label>ISO <select name="iso">${Object.keys(ISO).map(i => `<option value="${i}">${i} ${ISO[i]}</option>`)}</select></label>
+        <button>Gate in</button></form></fieldset>
+      <fieldset><legend>Deliver (gate out)</legend><form class="row" data-form="gateout">
+        <label>Unit to pick up <select name="unit">${pickups.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.holds.length ? '[HOLD]' : ''} @ ${posLabel(u)}</option>`).join('')}</select></label>
+        <button ${pickups.length ? '' : 'disabled'}>Gate out</button></form></fieldset>
+      <table class="grid"><tr><th>Tx</th><th>Time</th><th>Truck</th><th>Type</th><th>Unit</th><th>Status</th><th>Reason / WI</th></tr>` +
+      S.gate.slice().reverse().map(g => `<tr><td>${g.id}</td><td>${fmt(g.time)}</td><td class="mono">${g.truck}</td><td>${g.kind}</td><td>${unitLink(g.unit)}</td><td>${tag('st-' + g.status, g.status)}</td><td>${esc(g.reason || g.wi || '')}</td></tr>`).join('') + '</table>';
+  },
+  work() {
+    const groups = ['DISCHARGE', 'LOAD', 'GATE_IN', 'GATE_OUT'];
+    const showDone = UI.showDone;
+    return header('Work Queues', 'Work instructions in work queues, dispatched to the Equipment Control System (ECS)',
+      'כל תנועה של מכולה היא "הוראת עבודה". ההוראה מחכה בתור (PLANNED), המערכת שולחת אותה לציוד פנוי (DISPATCHED), והציוד מבצע (COMPLETE). פריקה צריכה עגורן רציף + רכב אוטונומי + עגורן חצר. אם חסר ציוד פנוי, ההוראה מחכה, ורואים למה בעמודה Note.') +
+      `<p><label><input type="checkbox" data-act="showDone" ${showDone ? 'checked' : ''}> Show completed</label></p>` +
+      groups.map(g => {
+        const list = S.wis.filter(w => w.kind === g && (showDone || w.status !== 'COMPLETE'));
+        const counts = ['PLANNED', 'DISPATCHED', 'COMPLETE'].map(s => `${s.toLowerCase()} ${S.wis.filter(w => w.kind === g && w.status === s).length}`).join(', ');
+        return `<fieldset><legend>Queue ${g} &ndash; ${counts}</legend>` + (list.length ? `<table class="grid"><tr><th>WI</th><th>Unit</th><th>From</th><th>To</th><th>Equipment</th><th>Status</th><th>Created</th><th>Done</th><th class="num">Rehandles</th><th>Note</th></tr>` +
+          list.map(w => `<tr><td>${w.id}</td><td>${unitLink(w.unit)}</td><td class="mono">${esc(w.from || (w.kind === 'LOAD' || w.kind === 'GATE_OUT' ? posLabel(S.units[w.unit]) : ''))}</td>
+            <td class="mono">${w.dest || (w.kind === 'LOAD' ? 'Vessel' : w.kind === 'GATE_OUT' ? 'Truck' : '')}</td><td>${w.eq.join(' + ')}</td><td>${tag('st-' + w.status, w.status)}</td>
+            <td>${fmt(w.created)}</td><td>${w.done != null ? fmt(w.done) : ''}</td><td class="num">${w.rehandles || ''}</td><td>${esc(w.note)}</td></tr>`).join('') + '</table>' : '<p class="note">Empty.</p>') + '</fieldset>';
+      }).join('');
+  },
+  equipment() {
+    return header('Equipment (ECS)', 'Equipment Control System; QC, AGV/AHT Manager, ASC Manager',
+      'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ועגורן חצר אוטומטי (ASC) אחד לכל בלוק. ASC של בלוק עמוס הופך לצוואר בקבוק.') +
+      `<table class="grid"><tr><th>Equipment</th><th>Kind</th><th>Status</th><th>Current WI</th><th class="num">Moves done</th></tr>` +
+      S.eq.map(e => `<tr><td class="mono">${e.id}</td><td>${e.desc}</td><td>${tag(e.status === 'BUSY' ? 'st-DISPATCHED' : 'st-COMPLETE', e.status)}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
+  },
+  billing() {
+    const t = S.tariff;
+    const unbilled = S.charges.filter(c => !c.invoice);
+    return header('Charges & Invoices', 'Billing: tariffs, billable events, invoices, payments, credits',
+      'הנמל מרוויח מכל תנועה. כל הרמה של מכולה יוצרת חיוב. מכולה שנשארת בחצר יותר מימי החינם משלמת אחסנה ליום, והחיוב נרשם כשהיא יוצאת. "Generate invoices" מאגד את כל החיובים הפתוחים לחשבונית אחת לכל חברת ספנות. אפשר לתת זיכוי (Credit) על חיוב שגוי.') +
+      `<fieldset><legend>Tariffs</legend><form class="row" data-form="tariff">
+        <label>Lift $ <input name="lift" type="number" min="0" value="${t.lift}" style="width:70px"></label>
+        <label>Gate fee $ <input name="gateFee" type="number" min="0" value="${t.gateFee}" style="width:70px"></label>
+        <label>Storage $/day <input name="storagePerDay" type="number" min="0" value="${t.storagePerDay}" style="width:70px"></label>
+        <label>Free days <input name="freeDays" type="number" min="0" value="${t.freeDays}" style="width:60px"></label>
+        <button>Save tariffs</button><span class="note">Applies to new charges only.</span></form></fieldset>
+      <fieldset><legend>Billable events not yet invoiced (${unbilled.length}, ${money(unbilled.reduce((s, c) => s + c.amount, 0))})</legend>
+        <p><button data-act="invoice" ${unbilled.length ? '' : 'disabled'}>Generate invoices</button></p>${chargeTable(unbilled)}</fieldset>
+      <fieldset><legend>Invoices</legend><table class="grid"><tr><th>Invoice</th><th>Line</th><th>Created</th><th class="num">Items</th><th class="num">Total</th><th>Status</th><th>Actions</th></tr>` +
+      S.invoices.slice().reverse().map(i => `<tr><td>${i.id}</td><td>${i.line} - ${LINES[i.line]}</td><td>${fmt(i.time)}</td><td class="num">${i.items.length}</td><td class="num">${money(i.total)}</td>
+        <td>${tag('st-' + i.status, i.status)}</td><td>${i.status === 'DRAFT' ? `<button class="sm" data-act="finalize" data-id="${i.id}">Finalize</button>` : ''}
+        ${i.status === 'FINAL' ? `<button class="sm" data-act="pay" data-id="${i.id}">Record payment</button>` : ''}
+        <button class="sm" data-act="invView" data-id="${i.id}">${UI.inv === i.id ? 'Hide' : 'Lines'}</button></td></tr>` +
+        (UI.inv === i.id ? `<tr><td colspan="7">${chargeTable(S.charges.filter(c => c.invoice === i.id), true)}</td></tr>` : '')).join('') + '</table></fieldset>';
+  },
+  mapping() {
+    const rows = [
+      ['Vessel Visits', 'ביקור אונייה עם 5 שלבים. Start work יוצר הוראות פריקה והעמסה.', 'N4 מנהל ביקורי אוניות ופעולות אונייה (Vessel).', 'אין תכנון רציף, אין תוכנית העמסה לפי מקום באונייה (Vessel Autostow).'],
+      ['Yard View + Unit Inventory', '4 בלוקים, 12 ערימות בכל אחד, עד 4 קומות. כל מכולה עם מיקום מדויק.', 'N4 מנהל את מלאי החצר ואת מיקום כל מכולה (Yard).', 'חצר קטנה מאוד. אין משקל/גובה ערימה מורכבים.'],
+      ['בחירת מקום אוטומטית', 'חוק אחד: מכולות ייצוא של אותה אונייה נערמות יחד.', 'מודול Expert Decking: תכנון חצר מבוסס חוקים שאפשר להגדיר.', 'רק חוק אחד וקבוע. אי אפשר עדיין להגדיר חוקים.'],
+      ['Rehandles', 'אם המכולה לא למעלה, מזיזים את מה שמעליה וסופרים.', 'זו המטרה העיקרית של תכנון חצר טוב: פחות הזזות מיותרות.', '-'],
+      ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין תיאום תורים מראש (Appointments), אין מצלמות/OCR.'],
+      ['Holds', 'עיכוב מכס חוסם יציאה בשער עד שמשחררים.', 'N4 תומך בעיכובים והרשאות על מכולות.', 'רק סוג עיכוב אחד.'],
+      ['Work Queues', 'כל תנועה היא הוראת עבודה בתור לפי סוג.', 'N4 יוצר הוראות עבודה ושולח משימות למערכת בקרת הציוד (ECS).', 'כל תנועה לוקחת בדיוק 15 דקות.'],
+      ['Equipment (ECS)', 'QC, AGV, ASC לכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
+      ['Billing', 'תעריפים, חיובי הרמה ושער, אחסנה אחרי ימי חינם, חשבוניות, תשלום, זיכוי.', 'N4 Billing: חשבוניות, תשלומים וזיכויים.', 'אין מע"מ, מטבעות או חוזים לפי לקוח.'],
+      ['טכנולוגיה', 'קובץ HTML אחד שרץ בדפדפן, בלי שרת.', 'N4 בנוי על J2EE, עם חוקים עסקיים שמוגדרים בנתונים (metadata) ולא בקוד.', 'אין משתמשים, הרשאות או מסד נתונים.'],
+      ['עוד לא קיים', 'רכבת, תיאום תורים, תכנון העמסה, הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
+    ];
+    return header('How it maps to N4', 'Concept map', 'הטבלה מסבירה מה כל מסך בסימולטור מדגים, מה הרעיון המקביל במערכת N4 האמיתית (לפי מקורות ציבוריים בלבד), ומה פישטנו. המראה הוא "בסגנון N4", לא העתק: המסכים האמיתיים לא פומביים.') +
+      `<table class="grid map rtl"><tr><th>מסך</th><th>מה יש בסימולטור</th><th>ב-N4 האמיתי</th><th>מה פישטנו</th></tr>` +
+      rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('') + `</table>
+      <p class="rtl note">מקורות ציבוריים: דף המוצר Automation של Kaleris, מקרה הבוחן של Long Beach Container Terminal, וכתבה ב-porttechnology.org על Navis N4 3.8. Navis ו-N4 הם סימנים מסחריים של בעליהם (Kaleris). הסימולטור הזה הוא כלי לימוד עצמאי, לא קשור אליהם, ולא מכיל קוד, תמונות או מסכים שלהם.</p>`;
+  },
+};
+function visitTable(list, actions) {
+  return `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Line</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">To discharge</th><th class="num">To load</th>${actions ? '<th>Actions</th>' : ''}</tr>` +
+    list.map(v => {
+      const us = Object.values(S.units).filter(u => u.visit === v.id);
+      const disch = us.filter(u => u.category === 'IMPORT' && u.state === 'ON_VESSEL').length;
+      const load = us.filter(u => u.category === 'EXPORT' && ['YARD', 'AT_GATE'].includes(u.state)).length;
+      let act = '';
+      if (actions) {
+        if (v.phase === 'INBOUND') act = `<button class="sm" data-act="arrive" data-id="${v.id}">Arrive now</button>`;
+        if (v.phase === 'ARRIVED') act = `<button class="sm" data-act="start" data-id="${v.id}">Start work</button>`;
+        if (v.phase === 'COMPLETE' || v.phase === 'WORKING') act = `<button class="sm" data-act="depart" data-id="${v.id}" ${v.phase === 'WORKING' ? 'disabled title="Finish work first"' : ''}>Depart</button>`;
+      }
+      return `<tr><td>${v.id}</td><td>${esc(v.vessel)}</td><td>${v.line}</td><td>${tag('ph-' + v.phase, v.phase)}</td><td>${fmt(v.eta)}</td>
+        <td>${v.ata != null ? fmt(v.ata) : ''}</td><td>${v.atd != null ? fmt(v.atd) : ''}</td><td class="num">${disch}</td><td class="num">${load}</td>${actions ? `<td>${act}</td>` : ''}</tr>`;
+    }).join('') + '</table>';
 }
-function advance(){
-  S.equip.filter(e=>e.state==='BUSY').forEach(e=>{e.ticks--;if(e.ticks<=0){e.state='IDLE';e.moves++;e.job=null}});
-  S.jobs.filter(j=>j.state==='ACTIVE').forEach(j=>{j.ticks--;if(j.ticks<=0)complete(j)});
+function unitSummary(units) {
+  const states = ['ON_VESSEL', 'AT_GATE', 'YARD', 'LOADED', 'DEPARTED'];
+  return `<table class="grid"><tr><th>Category</th>${states.map(s => `<th class="num">${s}</th>`).join('')}</tr>` +
+    ['IMPORT', 'EXPORT', 'EMPTY'].map(c => `<tr><td class="c-${c}">${c}</td>${states.map(s => `<td class="num">${units.filter(u => u.category === c && u.state === s).length || ''}</td>`).join('')}</tr>`).join('') + '</table>';
 }
-function complete(j){
-  const u=S.units[j.unit];j.state='DONE';S.stats.moves++;u.moves++;
-  if(j.kind==='DISCHARGE'||j.kind==='GATE_IN'){const s=findSlot(j.slot.b)||findSlot('B');place(u,s);u.state='YARD';u.since=S.tick;log(`${j.kind} ${u.id} -> ${u.loc.b}-${u.loc.bay+1}-${u.loc.row+1}-T${u.loc.tier}`)}
-  else if(j.kind==='LOAD'){const r=remove(u);u.state='LOADED';log(`LOAD ${u.id} on ${j.vessel}`+(r?` (${r} rehandle${r>1?'s':''})`:''));bill(u,'Vessel load',r)}
-  else if(j.kind==='GATE_OUT'){const r=remove(u);u.state='DEPARTED';S.stats.gateOut++;log(`GATE OUT ${u.id}`+(r?` (${r} rehandles)`:''));bill(u,'Import delivery',r)}
-}
-function bill(u,desc,reh){
-  const days=Math.max(0,Math.floor((S.tick-u.since)/TICKS_PER_DAY)+1-FREE_DAYS);
-  const lines=[['Lift (x'+(1+reh)+')',LIFT_FEE*(1+reh)]];if(days>0)lines.push([`Storage ${days}d`,days*STORAGE_FEE*(u.size==='40'?2:1)]);
-  S.invoices.push({no:'INV-'+pad(S.invoices.length+1,5),unit:u.id,line:u.line,desc,lines,total:lines.reduce((a,l)=>a+l[1],0),state:'OPEN'});
+function chargeTable(list, inInvoice) {
+  if (!list.length) return '<p class="note">None.</p>';
+  return `<table class="grid"><tr><th>Charge</th><th>Time</th><th>Line</th><th>Unit</th><th>Event</th><th>Detail</th><th class="num">Amount</th>${inInvoice ? '<th></th>' : ''}</tr>` +
+    list.map(c => `<tr><td>${c.id}</td><td>${fmt(c.time)}</td><td>${c.line}</td><td>${unitLink(c.unit)}</td><td>${c.type}</td><td>${esc(c.note)}</td><td class="num">${money(c.amount)}</td>
+      ${inInvoice ? `<td>${c.type !== 'CREDIT' && !c.credited ? `<button class="sm" data-act="credit" data-id="${c.id}">Credit</button>` : c.credited ? 'credited' : ''}</td>` : ''}</tr>`).join('') + '</table>';
 }
 
-// ---- gate ----
-function truckIn(){const u=mkUnit('EXPORT');u.state='GATE';S.stats.gateIn++;const open=S.vessels.find(v=>v.state==='WORKING');if(open){open.load.push(u.id)}
-  u.state='INBOUND';addJob('GATE_IN',u,open&&open.id);log(`Truck IN: export ${u.id} (${u.size}ft)`+(open?` booked on ${open.id}`:' no vessel booking'))}
-function truckOut(){const cand=Object.values(S.units).filter(u=>u.state==='YARD'&&(u.cat==='IMPORT'||u.cat==='REEFER')&&!hasJob(u.id));
-  if(!cand.length)return log('Truck OUT: no import unit available in yard.');const u=cand[rnd(cand.length)];addJob('GATE_OUT',u,null);log(`Truck OUT requested for ${u.id}`)}
+// ---------- actions ----------
+const ACTIONS = {
+  nav: id => { UI.page = id; UI.msg = null; },
+  cycle: () => cycle(),
+  day: () => { S.clock += 1440 - CYCLE_MIN; cycle(); log('SYSTEM', 'Jumped one day ahead'); },
+  auto: () => {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    else autoTimer = setInterval(() => { cycle(); save(); render(); }, 700);
+  },
+  save: () => { save(); flash('ok', 'Saved in this browser.'); },
+  reset: () => { if (autoTimer) ACTIONS.auto(); fresh(); UI.stack = null; UI.unit = null; flash('ok', 'Demo terminal reset.'); },
+  arrive: id => arrive(visitById(id)),
+  start: id => startWork(visitById(id)),
+  depart: id => depart(visitById(id)),
+  stack: id => { UI.stack = UI.stack === id ? null : id; },
+  unit: id => {
+    const u = S.units[id];
+    UI.unit = id;
+    if (u.pos) { UI.page = 'yard'; UI.stack = u.pos; } else UI.page = 'inventory';
+    UI.msg = null;
+  },
+  release: id => { const u = S.units[id]; u.holds = []; log('GATE', `Customs hold released on ${id}`); flash('ok', `Hold released on ${id}. It can now leave through the gate.`); },
+  showGone: () => { UI.showGone = !UI.showGone; },
+  showDone: () => { UI.showDone = !UI.showDone; },
+  invoice: () => {
+    const byLine = {};
+    S.charges.filter(c => !c.invoice).forEach(c => (byLine[c.line] ||= []).push(c));
+    Object.entries(byLine).forEach(([line, list]) => {
+      const inv = { id: 'INV' + String(++S.seq.inv).padStart(4, '0'), line, time: S.clock, items: list.map(c => c.id), total: list.reduce((s, c) => s + c.amount, 0), status: 'DRAFT' };
+      list.forEach(c => { c.invoice = inv.id; });
+      S.invoices.push(inv);
+      log('BILL', `${inv.id} draft for ${line}: ${money(inv.total)}`);
+    });
+    flash('ok', `${Object.keys(byLine).length} draft invoice(s) created.`);
+  },
+  finalize: id => { const i = S.invoices.find(x => x.id === id); i.status = 'FINAL'; log('BILL', `${id} finalized`); },
+  pay: id => { const i = S.invoices.find(x => x.id === id); i.status = 'PAID'; i.paid = S.clock; log('BILL', `Payment recorded for ${id} (${money(i.total)})`); },
+  invView: id => { UI.inv = UI.inv === id ? null : id; },
+  credit: id => {
+    const c = S.charges.find(x => x.id === id);
+    c.credited = true;
+    S.charges.push({ id: 'C' + String(++S.seq.chg).padStart(4, '0'), line: c.line, unit: c.unit, type: 'CREDIT', amount: -c.amount, note: 'Credit for ' + c.id, time: S.clock, invoice: null });
+    log('BILL', `Credit issued for ${c.id} (${money(-c.amount)}), goes on next invoice`);
+    flash('ok', 'Credit created. It will appear on the next invoice for ' + c.line + '.');
+  },
+};
+const FORMS = {
+  visit: f => {
+    const v = addVisit(f.vessel.trim() || 'MV Unnamed', f.line, Math.round(Number(f.eta) * 60), Math.min(20, Math.max(0, Number(f.imports) | 0)));
+    log('VESSEL', `Visit ${v.id} ${v.vessel} created, ETA ${fmt(v.eta)}`);
+    flash('ok', `Visit ${v.id} created.`);
+  },
+  gatein: f => {
+    if (f.kind === 'EXPORT' && !f.visit) { flash('err', 'Export needs an open vessel visit.'); return; }
+    const u = addUnit({ line: f.line, category: f.kind, iso: f.iso, visit: f.kind === 'EXPORT' ? f.visit : null, state: 'AT_GATE' });
+    if (f.kind === 'EMPTY') u.weight = 2.2;
+    const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind: 'RECEIVE ' + f.kind, unit: u.id, status: 'PLANNED' };
+    tx.wi = newWI('GATE_IN', u).id;
+    S.gate.push(tx);
+    log('GATE', `${tx.truck} in with ${u.id} (${f.kind}), ${tx.wi} created`);
+    flash('ok', `Truck ${tx.truck} accepted with ${u.id}. Run a cycle to stack it.`);
+  },
+  gateout: f => {
+    const u = S.units[f.unit];
+    if (!u) return;
+    const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind: 'DELIVER ' + u.category, unit: u.id };
+    S.gate.push(tx);
+    if (u.holds.length) {
+      tx.status = 'REJECTED'; tx.reason = 'Hold: ' + u.holds.join(', ');
+      log('GATE', `${tx.truck} REJECTED for ${u.id}: ${tx.reason}`);
+      flash('err', `Truck rejected: ${u.id} has a ${u.holds.join(', ')} hold. Release it in Unit Inventory first.`);
+      return;
+    }
+    tx.status = 'PLANNED';
+    tx.wi = newWI('GATE_OUT', u).id;
+    log('GATE', `${tx.truck} in for pickup of ${u.id}, ${tx.wi} created`);
+    flash('ok', `Pickup accepted. ${tx.wi} sent to the yard crane queue.`);
+  },
+  tariff: f => {
+    for (const k of ['lift', 'gateFee', 'storagePerDay', 'freeDays']) S.tariff[k] = Math.max(0, Number(f[k]) || 0);
+    log('BILL', 'Tariffs updated');
+    flash('ok', 'Tariffs saved.');
+  },
+};
 
-// ---- loop ----
-function step(){S.tick++;advance();plan();dispatch();
-  if(S.tick%25===0&&Math.random()<.7)truckIn();if(S.tick%30===0&&Math.random()<.7)truckOut();
-  if(S.tick%200===0&&!S.vessels.some(v=>v.state==='WORKING'))newVessel();render()}
-function setTimer(){clearInterval(timer);if(running)timer=setInterval(step,800/speed)}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  if (el.tagName === 'A') e.preventDefault();
+  if (el.dataset.act !== 'nav' && el.dataset.act !== 'unit') UI.msg = null;
+  ACTIONS[el.dataset.act](el.dataset.id);
+  save(); render();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.matches('nav a')) e.target.click();
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  const form = e.target;
+  UI.msg = null;
+  FORMS[form.dataset.form](Object.fromEntries(new FormData(form)));
+  save(); render();
+});
 
-// ---- views ----
-const NAV=[['Operations',[['yard','Yard Map'],['units','Unit Inquiry'],['vessel','Vessel Visits'],['gate','Gate'],['jobs','Work Queues']]],['Equipment',[['equip','Equipment Status']]],['Finance',[['billing','Billing']]],['Learn',[['learn','How it maps to N4']]]];
-function navHtml(){return NAV.map(([h,items])=>`<h4>${h}</h4>`+items.map(([k,t])=>`<a data-v="${k}" class="${k===view?'on':''}">${t}</a>`).join('')).join('')}
-function kpis(){const yardCount=Object.values(S.yard).reduce((a,s)=>a+s.length,0),cap=Object.entries(BLOCKS).reduce((a,[b,c])=>a+c.bays*c.rows*MAXTIER,0);
-  return `<div id="kpi">`+[['Moves',S.stats.moves],['Yard occupancy',Math.round(yardCount/cap*100)+'%'],['Units in yard',yardCount],['Rehandles',S.stats.rehandles],['Queued jobs',S.jobs.filter(j=>j.state==='QUEUED').length],['Gate in/out',S.stats.gateIn+' / '+S.stats.gateOut]].map(([a,b])=>`<div class="card"><small>${a}</small><b>${b}</b></div>`).join('')+`</div>`}
-function pill(s){return `<span class="pill ${s}">${s}</span>`}
-function vYard(){
-  const c=BLOCKS[selBlock];let g=`<div class="grid" style="grid-template-columns:repeat(${c.bays},30px)">`;
-  for(let row=0;row<c.rows;row++)for(let bay=0;bay<c.bays;bay++){const k=key(selBlock,bay,row),st=S.yard[k]||[],top=st.length?S.units[st[st.length-1]]:null;
-    g+=`<div class="cell ${top?top.cat:'e'} ${selCell===k?'sel':''}" data-k="${k}" title="${selBlock} bay ${bay+1} row ${row+1}">${st.length||''}</div>`}
-  g+='</div>';
-  let detail='<div class="note">Click a stack to see its containers (top first).</div>';
-  if(selCell&&selCell.startsWith(selBlock+'-')){const st=(S.yard[selCell]||[]).slice().reverse();detail=`<table><tr><th>Tier</th><th>Container</th><th>Cat</th><th>Line</th><th>Size</th></tr>`+st.map((id,i)=>{const u=S.units[id];return `<tr><td>T${st.length-i}</td><td>${u.id}</td><td>${u.cat}</td><td>${u.line}</td><td>${u.size}</td></tr>`}).join('')+`</table>`}
-  const busyASC=S.equip.find(e=>e.type==='ASC'&&e.block===selBlock);
-  return kpis()+`<div class="row"><div class="panel"><h3 style="display:flex;justify-content:space-between;align-items:center;gap:12px">Block ${selBlock} (${c.home}) <span>${Object.keys(BLOCKS).map(b=>`<button data-b="${b}">${b}</button>`).join(' ')}</span></h3>${g}<div class="lg" style="margin-top:6px">${CATS.map(x=>`<span class="${x}">${x}</span>`).join('')}</div><div class="note">Number = stack height (max ${MAXTIER}). ${busyASC.id}: ${busyASC.state}</div></div><div class="panel" style="min-width:320px"><h3>Stack detail</h3>${detail}</div></div>`}
-function vUnits(){const us=Object.values(S.units).sort((a,b)=>b.since-a.since).slice(0,120);
-  return kpis()+`<div class="panel"><h3>Unit Inquiry (latest 120)</h3><table><tr><th>Unit</th><th>Cat</th><th>Line</th><th>Size</th><th>Weight</th><th>State</th><th>Location</th><th>Vessel</th><th>Dwell (d)</th><th>Moves</th></tr>`+us.map(u=>`<tr><td>${u.id}</td><td>${u.cat}</td><td>${u.line}</td><td>${u.size}</td><td>${u.weight}</td><td>${pill(u.state==='GATE'?'INBOUND':u.state==='BOOKED'?'QUEUED':u.state)}</td><td>${u.loc?`${u.loc.b}-${u.loc.bay+1}-${u.loc.row+1}-T${u.loc.tier}`:'-'}</td><td>${u.vessel||'-'}</td><td>${((S.tick-u.since)/TICKS_PER_DAY).toFixed(1)}</td><td>${u.moves}</td></tr>`).join('')+`</table></div>`}
-function vVessel(){return kpis()+S.vessels.slice().reverse().map(v=>{const dd=v.discharge.filter(i=>S.units[i].state!=='INBOUND').length,ll=v.load.filter(i=>S.units[i].state==='LOADED').length;
-  const bar=(a,b)=>`<div style="background:#dde3ea;height:10px;width:200px;display:inline-block;vertical-align:middle"><div style="background:var(--blue2);height:10px;width:${b?a/b*200:0}px"></div></div> ${a}/${b}`;
-  return `<div class="panel"><h3>${v.id} - ${v.name} ${pill(v.state==='WORKING'?'WORKING':'DEPARTED')}</h3><div>Discharge ${bar(dd,v.discharge.length)}</div><div style="margin-top:4px">Load ${bar(ll,v.load.length)}</div><div class="note">Export containers are loaded only once they are in the yard; loading a buried container triggers rehandles.</div></div>`}).join('')}
-function vGate(){return kpis()+`<div class="panel"><h3>Gate transactions</h3><div class="note">Use Truck IN / Truck OUT in the top bar (auto-generated while running).</div><table><tr><th>Job</th><th>Type</th><th>Unit</th><th>State</th></tr>`+S.jobs.filter(j=>j.kind.startsWith('GATE')).slice(-25).reverse().map(j=>`<tr><td>${j.id}</td><td>${j.kind}</td><td>${j.unit}</td><td>${pill(j.state)}</td></tr>`).join('')+`</table></div>`}
-function vJobs(){return kpis()+`<div class="panel"><h3>Work instructions (latest 60)</h3><table><tr><th>WI</th><th>Kind</th><th>Unit</th><th>Vessel</th><th>State</th><th>Equipment</th><th>Wait</th></tr>`+S.jobs.slice(-60).reverse().map(j=>`<tr><td>${j.id}</td><td>${j.kind}</td><td>${j.unit}</td><td>${j.vessel||'-'}</td><td>${pill(j.state)}</td><td>${j.res.join(', ')||'-'}</td><td>${S.tick-j.created}</td></tr>`).join('')+`</table></div>`}
-function vEquip(){return kpis()+`<div class="panel"><h3>Equipment (ECS view)</h3><div class="note">QC = quay crane, AGV = automated guided vehicle, ASC = automated stacking crane. The TOS sends jobs; the equipment control system executes them.</div><table><tr><th>ID</th><th>Type</th><th>State</th><th>Job</th><th>Ticks left</th><th>Moves done</th></tr>`+S.equip.map(e=>`<tr><td>${e.id}</td><td>${e.type}</td><td>${pill(e.state)}</td><td>${e.job||'-'}</td><td>${e.state==='BUSY'?e.ticks:'-'}</td><td>${e.moves}</td></tr>`).join('')+`</table></div>`}
-function vBilling(){const tot=S.invoices.reduce((a,i)=>a+i.total,0);return kpis()+`<div class="panel"><h3>Invoices - total $${tot.toLocaleString()}</h3><div class="note">Tariff: lift $${LIFT_FEE} per move (rehandles billed too), storage $${STORAGE_FEE}/day per 20ft after ${FREE_DAYS} free days (sim day = ${TICKS_PER_DAY} ticks).</div><table><tr><th>No</th><th>Unit</th><th>Line</th><th>Service</th><th>Items</th><th>Total</th><th></th></tr>`+S.invoices.slice(-40).reverse().map(i=>`<tr><td>${i.no}</td><td>${i.unit}</td><td>${i.line}</td><td>${i.desc}</td><td>${i.lines.map(l=>`${l[0]}: $${l[1]}`).join('; ')}</td><td>$${i.total}</td><td><button data-pay="${i.no}" ${i.state==='PAID'?'disabled':''}>${i.state==='PAID'?'Paid':'Pay'}</button></td></tr>`).join('')+`</table></div>`}
-function vLearn(){return `<div class="panel"><h3>How this maps to a real TOS (N4-style concepts)</h3><table><tr><th>Concept</th><th>In this lab</th><th>In a real TOS</th></tr>
-<tr><td>Unit</td><td>Container with category, state, location</td><td>Unit lifecycle (inbound, yard, loaded, departed)</td></tr>
-<tr><td>Work Instruction</td><td>Work Queues (DISCHARGE, LOAD, GATE_IN, GATE_OUT)</td><td>Jobs sent to equipment</td></tr>
-<tr><td>Yard planning</td><td>Block per category, first free slot</td><td>Rule-based decking (Expert Decking style)</td></tr>
-<tr><td>Rehandles</td><td>Buried export costs extra moves and money</td><td>Core KPI that planning tries to minimise</td></tr>
-<tr><td>Equipment control</td><td>QC/AGV/ASC allocated per job</td><td>ECS plus ASC and AGV managers</td></tr>
-<tr><td>Billing</td><td>Lift plus storage after free days</td><td>Tariff-driven invoicing</td></tr></table>
-<p class="note"><b>Not modelled:</b> rail, appointments, customs holds, stowage planning, real routing, multi-user roles. Real screens of commercial systems are not public here, so the look is a generic classic-desktop style, not a copy.</p></div>`}
-const VIEWS={yard:vYard,units:vUnits,vessel:vVessel,gate:vGate,jobs:vJobs,equip:vEquip,billing:vBilling,learn:vLearn};
-function render(){document.getElementById('clock').textContent=fmtClock();document.getElementById('nav').innerHTML=navHtml();document.getElementById('view').innerHTML=VIEWS[view]()}
-document.addEventListener('click',e=>{const t=e.target;
-  if(t.dataset.v){view=t.dataset.v}else if(t.dataset.b){selBlock=t.dataset.b;selCell=null}else if(t.dataset.k){selCell=t.dataset.k}else if(t.dataset.pay){S.invoices.find(i=>i.no===t.dataset.pay).state='PAID'}else return;render()});
-btnRun.onclick=()=>{running=!running;btnRun.textContent=running?'Pause':'Run';setTimer()};
-btnSpeed.onclick=()=>{speed=speed===1?3:speed===3?8:1;btnSpeed.textContent='Speed x'+speed;setTimer()};
-btnVessel.onclick=()=>{newVessel();render()};btnIn.onclick=()=>{truckIn();render()};btnOut.onclick=()=>{truckOut();render()};
-init();render();setTimer();
+if (!load()) fresh();
+render();
+window.TOS = { get state() { return S; }, cycle: () => { cycle(); render(); }, checkDigit };   // for tests and curious learners
 </script>
 </body>
 </html>
