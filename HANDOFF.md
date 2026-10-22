@@ -44,11 +44,11 @@
 - הריפו `shalomeliy/TOS` היה ריק. ה-commit הזה הוא הראשון בו.
 
 ## קבצים וקוד חשובים
-הקבצים הבאים **לא ב-git עדיין** (נוצרו בסקרצ'פד של סשן הענן, ונשלחו ל-Shalom כקבצים מצורפים):
+הקבצים הבאים נמצאים בשורש הריפו (נוספו אחרי ה-HANDOFF הראשון):
 - `index.html` - ה-Lab הראשון. מבנה: `init()` / `plan()` (יצירת WI) / `dispatch()` (הקצאת ציוד) / `advance()` / `complete()` / `bill()`, ומסכים ב-`VIEWS`. קבועים בראש: `BLOCKS`, `MAXTIER`, `TICKS_PER_DAY`, `FREE_DAYS`, `LIFT_FEE`, `STORAGE_FEE`.
 - `N4-data-model-research.md` - מסמך מחקר מבנה הנתונים עם סימון [מאומת]/[הצעה], פערים ורשימת מקורות.
 
-**לפעולה:** להעתיק את שני הקבצים לתיקייה `C:\Users\Shalom\Projects\TOS Navis N4` ולהוסיף אותם ל-git כאן.
+**עודכן:** שני הקבצים נוספו לריפו (commit נפרד). עדיין צריך להעתיק לתיקייה המקומית ב-Windows אם הסשן המקומי לא עשה זאת.
 
 ## מקורות עיקריים
 Kaleris Automation Product Sheet; Long Beach Container Terminal case study; porttechnology.org (N4 3.8); N4 3.6.34 Cargo Manual (scribd); Port Newark N4 User Guide; Biznovate N4 training deck (צד-שלישי); Fenix FCI API Specs 1.5.0; N4 Customization Guide - Groovy (n4.ptp.com.my); N4 Public APIs 4.0.6 (scribd, צד-שלישי); Navis crane automation API (collaboration.navis.com).
