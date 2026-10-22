@@ -21,8 +21,12 @@ body{background:#3a6ea5;font:12px Tahoma,"Segoe UI",Verdana,sans-serif;color:var
 .wbtn{width:16px;height:14px;background:var(--face);color:#000;font:bold 9px Tahoma;display:grid;place-items:center;
   border:1px solid;border-color:var(--hl) var(--dark) var(--dark) var(--hl)}
 .menubar{display:flex;gap:2px;padding:2px 4px;border-bottom:1px solid var(--shadow)}
-.menubar span{padding:2px 6px}
-.menubar span u{text-decoration:underline}
+.menubar a{padding:2px 6px;color:#000;text-decoration:none;cursor:pointer}
+.menubar a:hover{background:var(--sel);color:#fff}
+.menubar a u{text-decoration:underline}
+#tip{position:fixed;z-index:10;max-width:280px;direction:rtl;text-align:right;background:#ffffe1;color:#000;border:1px solid #000;
+  padding:4px 7px;font-size:12px;line-height:1.45;box-shadow:2px 2px 0 #0004;pointer-events:none}
+#tip[hidden]{display:none}
 .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px;border-bottom:1px solid var(--shadow);box-shadow:0 1px var(--hl)}
 .sep{width:2px;height:20px;border-left:1px solid var(--shadow);border-right:1px solid var(--hl);margin:0 3px}
 button{font:inherit;background:var(--face);padding:3px 10px;cursor:pointer;color:#000;
@@ -102,12 +106,13 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 <div class="app">
   <div class="titlebar"><span class="t">TOS Trainer &mdash; N4-style Terminal Operating System (educational simulator)</span>
     <span class="wbtn" aria-hidden="true">_</span><span class="wbtn" aria-hidden="true">&#9633;</span><span class="wbtn" aria-hidden="true">x</span></div>
-  <div class="menubar"><span><u>F</u>ile</span><span><u>V</u>essel</span><span><u>Y</u>ard</span><span><u>G</u>ate</span><span><u>C</u>ontrol</span><span><u>B</u>illing</span><span><u>H</u>elp</span></div>
+  <div class="menubar">
+    <a data-act="nav" data-id="settings" tabindex="0"><u>F</u>ile</a><a data-act="nav" data-id="vessels" tabindex="0"><u>V</u>essel</a><a data-act="nav" data-id="yard" tabindex="0"><u>Y</u>ard</a><a data-act="nav" data-id="gate" tabindex="0"><u>G</u>ate</a><a data-act="nav" data-id="work" tabindex="0"><u>C</u>ontrol</a><a data-act="nav" data-id="billing" tabindex="0"><u>B</u>illing</a><a data-act="nav" data-id="mapping" tabindex="0"><u>H</u>elp</a></div>
   <div class="toolbar">
-    <span class="clock" id="clock"></span>
-    <button data-act="cycle" title="Advance the simulation 15 minutes: equipment finishes and starts jobs">Run 1 cycle (15 min)</button>
-    <button data-act="auto" id="autoBtn" title="Run cycles automatically">Auto-run</button>
-    <button data-act="day" title="Jump one day ahead (storage days grow)">+1 day</button>
+    <span class="clock" id="clock" data-tip="השעון של הנמל המדומה. הוא זז רק כשאתה מריץ סבבים."></span>
+    <button data-act="cycle">Run 1 cycle (15 min)</button>
+    <button data-act="auto" id="autoBtn">Auto-run</button>
+    <button data-act="day">+1 day</button>
     <span class="sep"></span>
     <button data-act="save">Save</button>
     <button data-act="reset">Reset demo</button>
@@ -119,6 +124,7 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
   <div class="logpane sunken" id="log" aria-label="Event log"></div>
   <div class="statusbar" id="status"></div>
 </div>
+<div id="tip" role="tooltip" hidden></div>
 
 <script>
 'use strict';
@@ -142,12 +148,53 @@ const PAGES = [
   ['Gate', [['gate', 'Gate Transactions']]],
   ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
   ['Billing', [['billing', 'Charges & Invoices']]],
-  ['Help', [['mapping', 'How it maps to N4']]],
+  ['Help', [['mapping', 'How it maps to N4'], ['settings', 'Settings']]],
 ];
+// Hebrew tooltips for every clickable thing, keyed by data-act (nav links by page id)
+const PAGE_TIPS = {
+  overview: 'מסך הסיכום: כמה מכולות יש, כמה עבודה פתוחה, וכמה כסף נכנס.',
+  vessels: 'רשימת האוניות: יצירת אונייה חדשה, הגעה לרציף, התחלת עבודה ויציאה.',
+  yard: 'מפת החצר: איפה כל מכולה עומדת. לחיצה על ערימה מראה מה בתוכה.',
+  inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן משחררים עיכוב מכס.',
+  gate: 'השער: משאיות שמביאות מכולות, או באות לקחת מכולות.',
+  work: 'תורי העבודה: כל הזזה של מכולה היא משימה שמחכה לציוד פנוי.',
+  equipment: 'הציוד: עגורנים ורכבים. רואים מי עסוק ובמה.',
+  billing: 'כסף: תעריפים, חיובים, חשבוניות ותשלומים.',
+  mapping: 'הסבר: איך כל מסך כאן דומה למערכת N4 האמיתית.',
+  settings: 'הגדרות: להדליק או לכבות את בועות ההסבר ואת תיבות ההסבר הצהובות.',
+};
+const TIPS = {
+  nav: el => PAGE_TIPS[el.dataset.id],
+  cycle: 'מקדם את השעון ברבע שעה. ציוד שסיים משימה מתפנה, ומשימות שמחכות נשלחות לציוד פנוי.',
+  auto: 'מריץ סבבים לבד, אחד בכל פחות משנייה. לחיצה נוספת עוצרת.',
+  day: 'קופץ יום שלם קדימה. טוב כדי לראות איך דמי האחסנה גדלים.',
+  save: 'שומר את המצב בדפדפן הזה, כדי להמשיך מאותה נקודה בפעם הבאה.',
+  reset: 'מוחק הכל ומתחיל נמל חדש מההתחלה. ההגדרות שלך נשמרות.',
+  arrive: 'האונייה מגיעה לרציף עכשיו, בלי לחכות לשעה המתוכננת.',
+  start: 'מתחילים לעבוד על האונייה: נוצרות משימות לפרוק את המכולות שעליה ולהעמיס את מכולות הייצוא.',
+  depart: 'האונייה יוצאת מהנמל. מכולות ייצוא שלא הספיקו לעלות נשארות מאחור.',
+  stack: 'ערימה בחצר. לחיצה מראה אילו מכולות בתוכה, מלמעלה למטה.',
+  unit: 'לחיצה מראה איפה המכולה הזאת נמצאת עכשיו.',
+  release: 'משחרר את עיכוב המכס. אחרי זה משאית יכולה לקחת את המכולה.',
+  showGone: 'מציג גם מכולות שכבר יצאו מהנמל.',
+  showDone: 'מציג גם משימות שכבר הסתיימו.',
+  invoice: 'מאגד את כל החיובים הפתוחים לחשבונית אחת לכל חברת ספנות.',
+  finalize: 'נועל את החשבונית ושולח אותה ללקוח. אחרי זה אפשר לרשום תשלום.',
+  pay: 'רושם שהלקוח שילם את החשבונית.',
+  invView: 'מציג או מסתיר את השורות שבתוך החשבונית.',
+  credit: 'מחזיר ללקוח את הכסף על החיוב הזה. הזיכוי יופיע בחשבונית הבאה.',
+  prefHelp: 'מדליק או מכבה את התיבה הצהובה עם ההסבר בראש כל מסך.',
+  prefTips: 'מדליק או מכבה את הבועות האלה, שמופיעות כשעומדים עם העכבר על כפתור.',
+};
 
 let S;                                    // simulation state (saved)
 const UI = { page: 'overview', stack: null, msg: null, unit: null };
 let autoTimer = null;
+// viewer preferences live apart from the simulation, so Reset demo keeps them
+const PREFS_KEY = 'tos-trainer-prefs';
+const PREFS = { help: true, tips: true };
+try { Object.assign(PREFS, JSON.parse(localStorage.getItem(PREFS_KEY) || '{}')); } catch (e) { /* defaults */ }
+function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(PREFS)); } catch (e) { /* ignore */ } }
 
 // ---------- helpers ----------
 const $ = id => document.getElementById(id);
@@ -416,7 +463,7 @@ function render() {
     <span>User: trainee</span><span>Facility: DEMO</span><span>WI planned: ${planned}</span><span>Equipment busy: ${busy}/${S.eq.length}</span>`;
 }
 function header(title, concept, helpHe) {
-  return `<h1>${title}</h1><div class="concept">N4 concept: ${concept}</div><div class="help">${helpHe}</div>`;
+  return `<h1>${title}</h1><div class="concept">N4 concept: ${concept}</div>` + (PREFS.help ? `<div class="help">${helpHe}</div>` : '');
 }
 const tag = (cls, text) => `<span class="tag ${cls}">${esc(text)}</span>`;
 const unitLink = id => `<a href="#" data-act="unit" data-id="${id}" class="mono">${id}</a>`;
@@ -443,11 +490,11 @@ const VIEWS = {
     return header('Vessel Visits', 'Vessel Visit (phases inbound / arrived / working / complete / departed)',
       'כל אונייה שמגיעה לנמל היא "ביקור". קודם היא בדרך (INBOUND), מגיעה לרציף (ARRIVED), מתחילים לפרוק ולהעמיס (WORKING), מסיימים (COMPLETE) ויוצאת (DEPARTED). Start work יוצר רשימת משימות לעגורנים: לפרוק את המכולות שעל האונייה ולהעמיס את מכולות הייצוא שמחכות בחצר.') +
       `<fieldset><legend>Create vessel visit</legend><form class="row" data-form="visit">
-        <label>Vessel <input name="vessel" required maxlength="30" value="MV Quay Example"></label>
-        <label>Line <select name="line">${Object.keys(LINES).map(l => `<option value="${l}">${l} - ${LINES[l]}</option>`)}</select></label>
-        <label>ETA in hours <input name="eta" type="number" min="0" max="240" value="2" style="width:60px"></label>
-        <label>Import units on board <input name="imports" type="number" min="0" max="20" value="6" style="width:60px"></label>
-        <button>Create</button></form></fieldset>` + visitTable(S.visits, true);
+        <label data-tip="שם האונייה. אפשר לכתוב כל שם.">Vessel <input name="vessel" required maxlength="30" value="MV Quay Example"></label>
+        <label data-tip="חברת הספנות שהאונייה שלה. היא זו שתקבל את החשבונית.">Line <select name="line">${Object.keys(LINES).map(l => `<option value="${l}">${l} - ${LINES[l]}</option>`).join('')}</select></label>
+        <label data-tip="בעוד כמה שעות האונייה צפויה להגיע לנמל.">ETA in hours <input name="eta" type="number" min="0" max="240" value="2" style="width:60px"></label>
+        <label data-tip="כמה מכולות יבוא יש על האונייה, שיצטרכו לפרוק בנמל.">Import units on board <input name="imports" type="number" min="0" max="20" value="6" style="width:60px"></label>
+        <button data-tip="יוצר ביקור אונייה חדש ברשימה.">Create</button></form></fieldset>` + visitTable(S.visits, true);
   },
   yard() {
     const sel = UI.stack;
@@ -491,14 +538,14 @@ const VIEWS = {
     return header('Gate Transactions', 'Gate: truck visits, receive export / deliver import, hold checks',
       'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר.') +
       `<fieldset><legend>Receive (gate in)</legend><form class="row" data-form="gatein">
-        <label>Type <select name="kind"><option value="EXPORT">Export full, booked to vessel</option><option value="EMPTY">Empty return</option></select></label>
-        <label>Vessel visit <select name="visit">${open.map(v => `<option value="${v.id}">${v.id} ${esc(v.vessel)} (${v.phase})</option>`).join('')}</select></label>
-        <label>Line <select name="line">${Object.keys(LINES).map(l => `<option>${l}</option>`)}</select></label>
-        <label>ISO <select name="iso">${Object.keys(ISO).map(i => `<option value="${i}">${i} ${ISO[i]}</option>`)}</select></label>
-        <button>Gate in</button></form></fieldset>
+        <label data-tip="ייצוא = מכולה מלאה שתעלה על אונייה. ריקה = מכולה ריקה שחוזרת לנמל.">Type <select name="kind"><option value="EXPORT">Export full, booked to vessel</option><option value="EMPTY">Empty return</option></select></label>
+        <label data-tip="לאיזו אונייה מכולת הייצוא מיועדת.">Vessel visit <select name="visit">${open.map(v => `<option value="${v.id}">${v.id} ${esc(v.vessel)} (${v.phase})</option>`).join('')}</select></label>
+        <label data-tip="חברת הספנות שהמכולה שייכת לה.">Line <select name="line">${Object.keys(LINES).map(l => `<option>${l}</option>`).join('')}</select></label>
+        <label data-tip="סוג המכולה לפי תקן בינלאומי: 20 רגל רגילה, 40 רגל גבוהה, או 20 רגל מקוררת.">ISO <select name="iso">${Object.keys(ISO).map(i => `<option value="${i}">${i} ${ISO[i]}</option>`)}</select></label>
+        <button data-tip="המשאית נכנסת עם המכולה, ונוצרת משימה לעגורן החצר להוריד אותה.">Gate in</button></form></fieldset>
       <fieldset><legend>Deliver (gate out)</legend><form class="row" data-form="gateout">
-        <label>Unit to pick up <select name="unit">${pickups.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.holds.length ? '[HOLD]' : ''} @ ${posLabel(u)}</option>`).join('')}</select></label>
-        <button ${pickups.length ? '' : 'disabled'}>Gate out</button></form></fieldset>
+        <label data-tip="איזו מכולה המשאית באה לקחת. מכולה עם [HOLD] תידחה בשער.">Unit to pick up <select name="unit">${pickups.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.holds.length ? '[HOLD]' : ''} @ ${posLabel(u)}</option>`).join('')}</select></label>
+        <button data-tip="השער בודק את המכולה. אם אין עיכוב, נוצרת משימה להוציא אותה מהחצר למשאית." ${pickups.length ? '' : 'disabled'}>Gate out</button></form></fieldset>
       <table class="grid"><tr><th>Tx</th><th>Time</th><th>Truck</th><th>Type</th><th>Unit</th><th>Status</th><th>Reason / WI</th></tr>` +
       S.gate.slice().reverse().map(g => `<tr><td>${g.id}</td><td>${fmt(g.time)}</td><td class="mono">${g.truck}</td><td>${g.kind}</td><td>${unitLink(g.unit)}</td><td>${tag('st-' + g.status, g.status)}</td><td>${esc(g.reason || g.wi || '')}</td></tr>`).join('') + '</table>';
   },
@@ -529,11 +576,11 @@ const VIEWS = {
     return header('Charges & Invoices', 'Billing: tariffs, billable events, invoices, payments, credits',
       'הנמל מרוויח מכל תנועה. כל הרמה של מכולה יוצרת חיוב. מכולה שנשארת בחצר יותר מימי החינם משלמת אחסנה ליום, והחיוב נרשם כשהיא יוצאת. "Generate invoices" מאגד את כל החיובים הפתוחים לחשבונית אחת לכל חברת ספנות. אפשר לתת זיכוי (Credit) על חיוב שגוי.') +
       `<fieldset><legend>Tariffs</legend><form class="row" data-form="tariff">
-        <label>Lift $ <input name="lift" type="number" min="0" value="${t.lift}" style="width:70px"></label>
-        <label>Gate fee $ <input name="gateFee" type="number" min="0" value="${t.gateFee}" style="width:70px"></label>
-        <label>Storage $/day <input name="storagePerDay" type="number" min="0" value="${t.storagePerDay}" style="width:70px"></label>
-        <label>Free days <input name="freeDays" type="number" min="0" value="${t.freeDays}" style="width:60px"></label>
-        <button>Save tariffs</button><span class="note">Applies to new charges only.</span></form></fieldset>
+        <label data-tip="כמה עולה כל הרמה של מכולה בעגורן.">Lift $ <input name="lift" type="number" min="0" value="${t.lift}" style="width:70px"></label>
+        <label data-tip="כמה עולה כל מעבר של משאית בשער.">Gate fee $ <input name="gateFee" type="number" min="0" value="${t.gateFee}" style="width:70px"></label>
+        <label data-tip="כמה עולה כל יום אחסנה, אחרי שנגמרו ימי החינם.">Storage $/day <input name="storagePerDay" type="number" min="0" value="${t.storagePerDay}" style="width:70px"></label>
+        <label data-tip="כמה ימים מכולה יכולה לשבת בחצר בלי לשלם אחסנה.">Free days <input name="freeDays" type="number" min="0" value="${t.freeDays}" style="width:60px"></label>
+        <button data-tip="שומר את המחירים. הם חלים רק על חיובים חדשים.">Save tariffs</button><span class="note">Applies to new charges only.</span></form></fieldset>
       <fieldset><legend>Billable events not yet invoiced (${unbilled.length}, ${money(unbilled.reduce((s, c) => s + c.amount, 0))})</legend>
         <p><button data-act="invoice" ${unbilled.length ? '' : 'disabled'}>Generate invoices</button></p>${chargeTable(unbilled)}</fieldset>
       <fieldset><legend>Invoices</legend><table class="grid"><tr><th>Invoice</th><th>Line</th><th>Created</th><th class="num">Items</th><th class="num">Total</th><th>Status</th><th>Actions</th></tr>` +
@@ -542,6 +589,14 @@ const VIEWS = {
         ${i.status === 'FINAL' ? `<button class="sm" data-act="pay" data-id="${i.id}">Record payment</button>` : ''}
         <button class="sm" data-act="invView" data-id="${i.id}">${UI.inv === i.id ? 'Hide' : 'Lines'}</button></td></tr>` +
         (UI.inv === i.id ? `<tr><td colspan="7">${chargeTable(S.charges.filter(c => c.invoice === i.id), true)}</td></tr>` : '')).join('') + '</table></fieldset>';
+  },
+  settings() {
+    return header('Settings', 'User preferences',
+      'כאן אתה קובע כמה עזרה המערכת מציגה. בהתחלה כדאי להשאיר הכל דלוק. כשתכיר את המסכים, אפשר לכבות. ההגדרות נשמרות בדפדפן, ולחיצה על Reset demo לא מוחקת אותן.') +
+      `<fieldset><legend>Help</legend>
+        <p><label><input type="checkbox" data-act="prefHelp" ${PREFS.help ? 'checked' : ''}> Show the yellow explanation box at the top of every screen</label></p>
+        <p><label><input type="checkbox" data-act="prefTips" ${PREFS.tips ? 'checked' : ''}> Show tooltips on buttons and fields (hover with the mouse or move to them with Tab)</label></p>
+      </fieldset>`;
   },
   mapping() {
     const rows = [
@@ -615,6 +670,8 @@ const ACTIONS = {
   release: id => { const u = S.units[id]; u.holds = []; log('GATE', `Customs hold released on ${id}`); flash('ok', `Hold released on ${id}. It can now leave through the gate.`); },
   showGone: () => { UI.showGone = !UI.showGone; },
   showDone: () => { UI.showDone = !UI.showDone; },
+  prefHelp: () => { PREFS.help = !PREFS.help; savePrefs(); },
+  prefTips: () => { PREFS.tips = !PREFS.tips; savePrefs(); hideTip(); },
   invoice: () => {
     const byLine = {};
     S.charges.filter(c => !c.invoice).forEach(c => (byLine[c.line] ||= []).push(c));
@@ -685,8 +742,41 @@ document.addEventListener('click', e => {
   save(); render();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.target.matches('nav a')) e.target.click();
+  if (e.key === 'Enter' && e.target.matches('nav a, .menubar a')) e.target.click();
+  if (e.key === 'Escape') hideTip();
 });
+
+// ---------- tooltips ----------
+function tipText(el) {
+  if (el.dataset.tip) return el.dataset.tip;
+  const t = TIPS[el.dataset.act];
+  return typeof t === 'function' ? t(el) : t;
+}
+let tipFor = null;
+function showTip(el) {
+  const text = PREFS.tips && tipText(el);
+  if (!text) return hideTip();
+  const tip = $('tip');
+  tip.textContent = text;
+  tip.hidden = false;
+  tipFor = el;
+  el.setAttribute('aria-describedby', 'tip');
+  const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  const left = Math.min(Math.max(4, r.left), innerWidth - w - 4);
+  const top = r.bottom + 6 + h > innerHeight ? r.top - h - 6 : r.bottom + 6;
+  tip.style.left = left + 'px';
+  tip.style.top = Math.max(4, top) + 'px';
+}
+function hideTip() {
+  $('tip').hidden = true;
+  if (tipFor) tipFor.removeAttribute('aria-describedby');
+  tipFor = null;
+}
+const tipTarget = e => e.target.closest && e.target.closest('[data-tip], [data-act]');
+document.addEventListener('mouseover', e => { const el = tipTarget(e); if (el && el !== tipFor) showTip(el); else if (!el) hideTip(); });
+document.addEventListener('focusin', e => { const el = tipTarget(e); if (el) showTip(el); });
+document.addEventListener('focusout', hideTip);
+document.addEventListener('scroll', hideTip, true);
 document.addEventListener('submit', e => {
   e.preventDefault();
   const form = e.target;

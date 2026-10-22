@@ -30,10 +30,40 @@ const state = () => page.evaluate(() => JSON.parse(JSON.stringify(window.TOS.sta
 check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO 6346 check digit');
 
 // every page renders
-for (const id of ['overview', 'vessels', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping']) {
+for (const id of ['overview', 'vessels', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
+  check(await page.isVisible('.help'), 'help box shown: ' + id);
 }
+
+// every button, nav link and form label has a tooltip text
+const noTip = await page.evaluate(() => {
+  const missing = [];
+  for (const id of ['overview', 'vessels', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'settings']) {
+    document.querySelector(`nav a[data-id="${id}"]`).click();
+    document.querySelectorAll('button, nav a, .menubar a, form label, [data-act]').forEach(el => {
+      if (!(el.dataset.tip || (TIPS[el.dataset.act] && (typeof TIPS[el.dataset.act] !== 'function' || TIPS[el.dataset.act](el))))) missing.push(id + ': ' + el.outerHTML.slice(0, 60));
+    });
+  }
+  return missing;
+});
+check(noTip.length === 0, 'tooltips missing:\n  ' + noTip.join('\n  '));
+await page.hover('[data-act="cycle"]');
+check(await page.isVisible('#tip') && (await page.textContent('#tip')).includes('רבע שעה'), 'tooltip shows on hover');
+
+// settings: turning help and tips off hides them, survives reload and Reset demo
+await page.click('nav a[data-id="settings"]');
+await page.click('[data-act="prefHelp"]');
+await page.click('[data-act="prefTips"]');
+await page.click('[data-act="reset"]');
+await page.reload();
+await page.click('nav a[data-id="yard"]');
+check(!(await page.isVisible('.help')), 'help box hidden after turning it off');
+await page.hover('[data-act="cycle"]');
+check(!(await page.isVisible('#tip')), 'tooltip hidden after turning it off');
+await page.click('nav a[data-id="settings"]');
+await page.click('[data-act="prefHelp"]');
+await page.click('[data-act="prefTips"]');
 
 // vessel 1 arrives by ETA, start work, run until complete
 for (let i = 0; i < 5; i++) await page.click('[data-act="cycle"]');

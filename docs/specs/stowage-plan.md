@@ -1,6 +1,6 @@
 # Spec - Version 2: Automatic stowage plan (Autostow-style)
 
-Status: **draft, waiting for user decisions D1 and D2**. Roadmap: `docs/ROADMAP.md` row 2.
+Status: **approved 2026-10-22** (D1 = a, D2 = a). Roadmap: `docs/ROADMAP.md` row 2.
 
 ## Context and observed problem
 Today a vessel is a black box: LOAD work instructions run in creation order and loaded units just become `LOADED` with no position (`complete`, `cycle` in `index.html`). The learner never sees *where* a container goes on the ship, or why order matters. In real terminals that is the vessel planner's core job (public N4 concept: Vessel Autostow).
@@ -84,7 +84,9 @@ Shalom, learning. The question he should be able to answer after this version: "
 ## Spike (before plan)
 Riskiest assumption: loading in plan order (POD, weight) through the current yard stacking still finishes in a reasonable number of cycles, and the extra yard rehandles stay understandable rather than looking like a bug. Spike measures cycles and rehandles for the demo vessel with plan-order loading vs today's order.
 
-## Open decisions
+## Decisions
+User chose **D1 = (a)** and **D2 = (a)** on 2026-10-22.
+
 - **D1 - where POD comes from**: (a) each line has a fixed route, seeded exports get a random POD from it, gate-in form lets you pick (recommended); (b) random only; (c) always picked by hand.
 - **D2 - rule break**: (a) warning only, loading continues (recommended for v2; the auto-planner itself never breaks rules, only late arrivals can); (b) block the load until fixed.
 - Decided without asking (reversible): 20'/40' in separate bays; one ship layout for all vessels; "watch the planner" now, "be the planner" in version 3.
