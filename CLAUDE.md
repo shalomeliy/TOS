@@ -61,6 +61,10 @@ Before calling it done:
 
 Small, clear changes (typo, one-line copy edit, a config value) skip the pipeline. The pipeline is for features.
 
+## Rule: a Hebrew tooltip on every control and every screen (permanent)
+
+The user is new to port operations. Every button, link, field and checkbox, existing and added in any future version, has a Hebrew tooltip (`data-tip` or an entry in `TIPS`). Every screen title has a tooltip from `SCREEN_TIPS` that says what you see on the screen and what you can do on it. A new screen is not done until it has its `SCREEN_TIPS` entry. `tools/smoke.mjs` fails on any control or screen without one (checked at the start and at the end of the scripted day).
+
 ## Rule: spike before building
 
 The user builds many capabilities from scratch. Before writing the full code of any new capability, always write a small experiment first (`feature-spike`): minimal code that tests the riskiest assumption and shows whether the feature is feasible and worth developing. Only after a GO verdict and the user's approval, plan and build the full capability. Skip only for small, clear changes, or when every part is already proven in this project (say so).

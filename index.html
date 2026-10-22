@@ -37,6 +37,18 @@ button.sm{padding:1px 6px}
 button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:1px dotted #000;outline-offset:1px}
 input,select{font:inherit;background:#fff;padding:2px 3px;border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);box-shadow:inset 1px 1px var(--dark)}
 .clock{font-family:"Lucida Console",Consolas,monospace;padding:2px 8px;background:#000;color:#3f3}
+.pstate{padding:1px 6px;border:1px solid #0006;font-weight:bold;white-space:nowrap}
+.ps-WORKING{background:#d4efd4}.ps-GATE-CLOSED{background:#fff3c4}.ps-SHABBAT{background:#e3d6f5}
+.st-SHABBAT{background:#e3d6f5}
+.layout{overflow-x:auto;display:grid;gap:4px;padding-bottom:4px}
+.layout>div{min-width:max-content}
+.sea{background:#9cc3e6;color:#1d3e63;padding:2px 6px}
+.quays{display:flex;gap:6px}
+.quay{flex:none;background:#cfd8e3;border:1px solid #7f8fa3;padding:3px 6px}
+.lane{display:flex;flex-wrap:wrap;gap:4px 16px;background:#eee;border:1px dashed #999;padding:3px 6px}
+.lblocks{display:flex;gap:6px}
+.lblock{background:#fff;border:1px solid #bbb;padding:3px 6px;min-width:150px}
+.rail{border-top:4px double #555;padding-top:2px;color:var(--muted)}
 .main{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:0;gap:4px;padding:4px}
 .sunken{background:var(--win);border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);box-shadow:inset 1px 1px var(--dark)}
 nav{overflow:auto;padding:4px 2px}
@@ -46,7 +58,8 @@ nav a{display:block;padding:1px 4px 1px 22px;color:#000;text-decoration:none;cur
 nav a::before{content:"";display:inline-block;width:10px;height:10px;margin-right:5px;vertical-align:-1px;background:var(--face);border:1px solid var(--shadow)}
 nav a.cur{background:var(--sel);color:#fff}
 .content{overflow:auto;padding:8px 10px;min-width:0}
-h1{font-size:15px;margin:0 0 2px}
+h1{font-size:15px;margin:0 0 2px;cursor:help}
+h1 .q{display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;font-size:11px;border:1px solid var(--shadow);border-radius:50%;background:var(--win);color:var(--muted)}
 .concept{color:var(--muted);margin-bottom:6px}
 .help{direction:rtl;text-align:right;background:#ffffe1;border:1px solid #a0a070;padding:5px 8px;margin:6px 0 10px;line-height:1.5}
 fieldset{border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);margin:0 0 10px;padding:6px 8px 8px}
@@ -109,7 +122,8 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
   <div class="menubar">
     <a data-act="nav" data-id="settings" tabindex="0"><u>F</u>ile</a><a data-act="nav" data-id="vessels" tabindex="0"><u>V</u>essel</a><a data-act="nav" data-id="yard" tabindex="0"><u>Y</u>ard</a><a data-act="nav" data-id="gate" tabindex="0"><u>G</u>ate</a><a data-act="nav" data-id="work" tabindex="0"><u>C</u>ontrol</a><a data-act="nav" data-id="billing" tabindex="0"><u>B</u>illing</a><a data-act="nav" data-id="mapping" tabindex="0"><u>H</u>elp</a></div>
   <div class="toolbar">
-    <span class="clock" id="clock" data-tip="השעון של הנמל המדומה. הוא זז רק כשאתה מריץ סבבים."></span>
+    <span class="clock" id="clock" data-tip="השעון של הנמל המדומה: יום בשבוע, תאריך ושעה. הוא זז רק כשאתה מריץ סבבים."></span>
+    <span class="pstate" id="portState" data-tip="מה מותר בנמל עכשיו. WORKING = עובדים והשער פתוח. GATE CLOSED = העגורנים עובדים, אבל השער סגור למשאיות. SHABBAT = משישי 15:00 עד מוצאי שבת 20:00 שום מכונה לא מקבלת עבודה חדשה."></span>
     <button data-act="cycle">Run 1 cycle (15 min)</button>
     <button data-act="auto" id="autoBtn">Auto-run</button>
     <button data-act="day">+1 day</button>
@@ -138,6 +152,10 @@ const BLOCKS = [
   { id: 'C', use: ['IMPORT'], bays: 6, rows: 2 },
   { id: 'D', use: ['IMPORT', 'EMPTY'], bays: 6, rows: 2 },
 ];
+// Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
+const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
+const STATE_VER = 2;                              // bump when the saved shape changes, and add a MIGRATE step
+const DAYS = ['Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed'];   // T0 is Thursday 06:00 port time
 const LINES = { BLU: 'Blue Ocean Lines', RED: 'Red Anchor Shipping', GRN: 'Green Wave Carriers' };
 const OWNER = { BLU: 'BOLU', RED: 'RASU', GRN: 'GWCU' };
 const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer" };
@@ -162,6 +180,19 @@ const PAGE_TIPS = {
   billing: 'כסף: תעריפים, חיובים, חשבוניות ותשלומים.',
   mapping: 'הסבר: איך כל מסך כאן דומה למערכת N4 האמיתית.',
   settings: 'הגדרות: להדליק או לכבות את בועות ההסבר ואת תיבות ההסבר הצהובות.',
+};
+// per-screen tooltip on the screen title: what you see here, and what you can do here
+const SCREEN_TIPS = {
+  overview: 'מה רואים: מפה של הנמל (ים, שני רציפים, עגורנים, 4 בלוקים ומסילת רכבת) וסיכום של כל הנמל: כמה מכולות בחצר, כמה אוניות ברציף, כמה עבודה פתוחה וכמה כסף. מה אפשר לעשות: רק להסתכל. הפעולות עצמן נעשות במסכים האחרים.',
+  vessels: 'מה רואים: כל האוניות, ליד איזה רציף כל אחת, ובאיזה שלב היא (בדרך, ברציף, בעבודה, סיימה, יצאה). מה אפשר לעשות: ליצור אונייה חדשה ולבחור לה רציף, להביא אותה לרציף, להתחיל עבודה ולשלוח אותה לדרך.',
+  yard: 'מה רואים: מפת החצר, בלוק אחרי בלוק, וכל ערימה של מכולות לפי צבע הסוג. מה אפשר לעשות: ללחוץ על ערימה ולראות אילו מכולות בתוכה, מלמעלה למטה.',
+  inventory: 'מה רואים: רשימה של כל המכולות, עם הסוג, המיקום, המשקל, ימי האחסנה והעיכובים. מה אפשר לעשות: לשחרר עיכוב מכס, ולהציג גם מכולות שכבר יצאו.',
+  gate: 'מה רואים: כל המשאיות שהגיעו לשער, ומה קרה לכל אחת (התקבלה, או נדחתה ולמה, למשל עיכוב מכס או שער סגור). מה אפשר לעשות: להכניס משאית עם מכולה, או לשלוח משאית לקחת מכולה מהחצר. השער פתוח א\'-ה\' 05:00-24:00, שישי 05:00-14:45, שבת סגור.',
+  work: 'מה רואים: תורי העבודה. כל הזזה של מכולה היא משימה שמחכה, נשלחת לציוד או הסתיימה. מה אפשר לעשות: להציג גם משימות שהסתיימו. המשימות עצמן זזות כשמריצים סבבים.',
+  equipment: 'מה רואים: כל המכונות בנמל (2 עגורני רציף, 4 רכבים אוטונומיים ו-8 עגורני חצר, שניים בכל בלוק), מי עסוק, באיזו משימה, וכמה הזזות עשה. בשבת מכונה פנויה מסומנת SHABBAT. מה אפשר לעשות: רק להסתכל.',
+  billing: 'מה רואים: המחירים, החיובים שעוד לא נכנסו לחשבונית, והחשבוניות. מה אפשר לעשות: לשנות מחירים, להפיק חשבוניות, לנעול, לרשום תשלום ולתת זיכוי.',
+  mapping: 'מה רואים: טבלה שמסבירה איזה רעיון של N4 כל מסך כאן מדגים, ומה חסר לעומת המערכת האמיתית. מה אפשר לעשות: רק לקרוא.',
+  settings: 'מה רואים: הגדרות העזרה. מה אפשר לעשות: להדליק או לכבות את התיבות הצהובות ואת הבועות. ההגדרה נשמרת בדפדפן.',
 };
 const TIPS = {
   nav: el => PAGE_TIPS[el.dataset.id],
@@ -203,7 +234,7 @@ const money = n => (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US'
 function fmt(min) {
   const d = new Date(T0 + min * 60000);
   const mon = d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' });
-  return String(d.getUTCDate()).padStart(2, '0') + '-' + mon + ' ' +
+  return weekday(min) + ' ' + String(d.getUTCDate()).padStart(2, '0') + '-' + mon + ' ' +
     String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
 }
 const blockOf = pos => pos ? pos[0] : null;
@@ -213,8 +244,25 @@ const posLabel = u => {
   return u.pos + '-T' + (S.stacks[u.pos].indexOf(u.id) + 1);
 };
 const visitById = id => S.visits.find(v => v.id === id);
-const daysIn = u => u.inTime == null ? 0 : Math.max(1, Math.ceil(((u.outTime ?? S.clock) - u.inTime) / 1440));
+const daysIn = u => u.inTime == null ? 0 : storageDays(u.inTime, u.outTime ?? S.clock);
 const storageDue = u => Math.max(0, daysIn(u) - S.tariff.freeDays) * S.tariff.storagePerDay;
+
+// ---------- port calendar (clock = minutes after T0; one port time, no daylight saving) ----------
+const dayIndex = m => Math.floor((m + 360) / 1440);                 // 0 = Thu 22-Oct (T0 is 06:00)
+const weekday = m => DAYS[((dayIndex(m) % 7) + 7) % 7];
+const timeOfDay = m => (((m + 360) % 1440) + 1440) % 1440;           // minutes since midnight
+// no work from Friday 15:00 until Saturday (Motzei Shabbat) 20:00
+const isWorkTime = m => { const d = weekday(m), t = timeOfDay(m); return !((d === 'Fri' && t >= 900) || (d === 'Sat' && t < 1200)); };
+// gate (official HCT hours): Sun-Thu 05:00-24:00, Fri 05:00-14:45, Sat closed
+const isGateOpen = m => { const d = weekday(m), t = timeOfDay(m); return d !== 'Sat' && t >= 300 && (d !== 'Fri' || t <= 885); };
+function nextGateOpen(m) { let x = m; for (let i = 0; i < 7 * 96 && !isGateOpen(x); i++) x += CYCLE_MIN; return x; }
+// storage: every calendar day the box was in the yard for any part of it, Saturday not counted
+function storageDays(from, to) {
+  let n = 0;
+  for (let d = dayIndex(from); d <= dayIndex(to); d++) if (DAYS[((d % 7) + 7) % 7] !== 'Sat') n++;
+  return n;
+}
+const portState = m => !isWorkTime(m) ? 'SHABBAT' : !isGateOpen(m) ? 'GATE CLOSED' : 'WORKING';
 
 // ISO 6346 check digit (letters skip multiples of 11)
 const LETTER = (() => { const m = {}; let v = 10; for (const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { if (v % 11 === 0) v++; m[c] = v++; } return m; })();
@@ -231,7 +279,7 @@ function flash(type, text) { UI.msg = { type, text }; }
 // ---------- state ----------
 function fresh() {
   S = {
-    clock: 0, auto: false,
+    ver: STATE_VER, clock: 0, auto: false, workOn: true,
     seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0 },
     units: {}, stacks: {}, visits: [], wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
     stats: { rehandles: 0, moves: 0 },
@@ -240,11 +288,11 @@ function fresh() {
   for (const b of BLOCKS) for (let bay = 1; bay <= b.bays; bay++) for (let row = 1; row <= b.rows; row++) S.stacks[stackKey(b.id, bay, row)] = [];
   ['QC01', 'QC02'].forEach(id => S.eq.push({ id, type: 'QC', desc: 'Quay crane', status: 'IDLE', wi: null, moves: 0 }));
   ['AGV01', 'AGV02', 'AGV03', 'AGV04'].forEach(id => S.eq.push({ id, type: 'AGV', desc: 'Automated guided vehicle', status: 'IDLE', wi: null, moves: 0 }));
-  BLOCKS.forEach(b => S.eq.push({ id: 'ASC-' + b.id, type: 'ASC-' + b.id, desc: 'Automated stacking crane, block ' + b.id, status: 'IDLE', wi: null, moves: 0 }));
+  BLOCKS.forEach(b => [1, 2].forEach(n => S.eq.push(newASC(b.id, n))));
 
   // seed: an earlier vessel left imports in the yard, some under customs hold
-  const v1 = addVisit('MV Training Star', 'BLU', 60, 8);
-  const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6);
+  const v1 = addVisit('MV Training Star', 'BLU', 60, 8, '27');
+  const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6, '28');
   for (let i = 0; i < 6; i++) {
     const u = addUnit({ line: i % 2 ? 'GRN' : 'BLU', category: 'IMPORT', iso: i % 3 ? '22G1' : '45G1', state: 'YARD', inTime: -5 * 1440 - i * 90 });
     if (i === 1 || i === 4) u.holds.push('CUSTOMS');
@@ -267,8 +315,10 @@ function addUnit(p) {
   S.units[u.id] = u;
   return u;
 }
-function addVisit(vessel, line, etaIn, imports) {
-  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null };
+// two ASCs share each block; both have the block's type, so dispatch takes whichever is free
+const newASC = (block, n) => ({ id: `ASC-${block}${n}`, type: 'ASC-' + block, desc: `Automated stacking crane ${n}, block ${block}`, status: 'IDLE', wi: null, moves: 0 });
+function addVisit(vessel, line, etaIn, imports, quay) {
+  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, quay: quay || '27', wait: null, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null };
   S.visits.push(v);
   for (let i = 0; i < imports; i++) {
     const u = addUnit({ line, category: 'IMPORT', iso: i % 3 ? '22G1' : (i % 2 ? '45G1' : '22R1'), visit: v.id, state: 'ON_VESSEL' });
@@ -278,8 +328,46 @@ function addVisit(vessel, line, etaIn, imports) {
 }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* storage blocked: keep running in memory */ } }
 function load() {
-  try { const raw = localStorage.getItem(KEY); if (raw) { S = JSON.parse(raw); return true; } } catch (e) { /* ignore */ }
-  return false;
+  let raw = null;
+  try { raw = localStorage.getItem(KEY); } catch (e) { /* storage blocked */ }
+  if (!raw) return false;
+  try { S = normalize(JSON.parse(raw)); }
+  catch (e) { fresh(); flash('err', `The saved game could not be read (${e.message}). A new port was started.`); }
+  return true;
+}
+// one step per saved version; each step brings a save up by one version
+const MIGRATE = {
+  1(s) {   // version 1 -> 2: Ashdod layout (two ASCs per block, quays)
+    const ren = {};
+    BLOCKS.forEach(b => { ren['ASC-' + b.id] = `ASC-${b.id}1`; });
+    s.eq.forEach(e => { if (ren[e.id]) { e.id = ren[e.id]; e.desc = `Automated stacking crane 1, block ${e.type.slice(4)}`; } });
+    s.wis.forEach(w => { w.eq = (w.eq || []).map(id => ren[id] || id); });
+    BLOCKS.forEach(b => { if (!s.eq.some(e => e.id === `ASC-${b.id}2`)) s.eq.push(newASC(b.id, 2)); });
+    const taken = new Set();
+    s.visits.filter(v => ['ARRIVED', 'WORKING', 'COMPLETE'].includes(v.phase)).forEach(v => {
+      v.quay = (QUAYS.find(q => !taken.has(q.id)) || QUAYS[0]).id; taken.add(v.quay);
+    });
+    s.visits.forEach((v, i) => { if (!v.quay) v.quay = QUAYS[i % QUAYS.length].id; v.wait = null; });
+    s.workOn = true;
+  },
+};
+function normalize(s) {
+  const ok = s && typeof s === 'object' && s.units && s.stacks && s.seq && s.tariff &&
+    ['eq', 'visits', 'wis', 'charges', 'invoices', 'gate', 'log'].every(k => Array.isArray(s[k]));
+  if (!ok) throw new Error('unknown format');
+  // fill counters and settings a hand-edited or older save may lack, and refuse positions that point nowhere
+  s.seq = Object.assign({ cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0 }, s.seq);
+  s.stats = Object.assign({ rehandles: 0, moves: 0 }, s.stats);
+  s.tariff = Object.assign({ lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 }, s.tariff);
+  if (Object.values(s.units).some(u => u.pos && !s.stacks[u.pos])) throw new Error('a unit is in a yard slot that does not exist');
+  const from = s.ver ?? 1;
+  if (!(from >= 1 && from <= STATE_VER)) throw new Error('saved by another version (' + from + ')');
+  for (let v = from; v < STATE_VER; v++) {
+    MIGRATE[v](s);
+    s.ver = v + 1;
+    s.log.push({ t: s.clock, area: 'SYSTEM', msg: `Saved game upgraded from version ${v} to ${v + 1}` });
+  }
+  return s;
 }
 
 // ---------- yard planning (simple rule-based decking) ----------
@@ -331,7 +419,7 @@ function charge(u, type, amount, note) {
 }
 function chargeStorage(u) {
   const due = storageDue(u);
-  if (due) charge(u, 'STORAGE', due, `${daysIn(u)} days, ${S.tariff.freeDays} free`);
+  if (due) charge(u, 'STORAGE', due, `${daysIn(u)} days (Saturday not counted), ${S.tariff.freeDays} free`);
 }
 
 // ---------- work instructions & equipment control ----------
@@ -409,23 +497,46 @@ function complete(wi) {
 function cycle() {
   S.clock += CYCLE_MIN;
   S.wis.filter(w => w.status === 'DISPATCHED').forEach(complete);
-  // vessel arrivals by ETA
+  // vessel arrivals by ETA (a vessel whose quay is taken waits)
   S.visits.filter(v => v.phase === 'INBOUND' && v.eta <= S.clock).forEach(v => arrive(v));
+  // Shabbat: running jobs finish above, but no new job is sent to any machine
+  const work = isWorkTime(S.clock);
+  if (work !== S.workOn) {
+    S.workOn = work;
+    log('SYSTEM', work ? 'Motzei Shabbat: work resumes' : 'Shabbat: no new work until Sat 20:00');
+  }
+  const planned = S.wis.filter(w => w.status === 'PLANNED');
+  if (!work) { planned.forEach(w => { w.note = 'Shabbat'; }); return finishVisits(); }
   // discharge before load on the same vessel; then by creation order
   const order = { DISCHARGE: 0, GATE_IN: 1, GATE_OUT: 1, LOAD: 2 };
-  S.wis.filter(w => w.status === 'PLANNED')
+  planned
     .sort((a, b) => order[a.kind] - order[b.kind] || a.created - b.created)
     .forEach(w => {
       if (w.kind === 'LOAD' && S.wis.some(d => d.kind === 'DISCHARGE' && d.visit === w.visit && d.status !== 'COMPLETE')) { w.note = 'After discharge'; return; }
       tryDispatch(w);
     });
+  finishVisits();
+}
+function finishVisits() {
   S.visits.filter(v => v.phase === 'WORKING').forEach(v => {
     if (!S.wis.some(w => w.visit === v.id && w.status !== 'COMPLETE')) { v.phase = 'COMPLETE'; log('VESSEL', `${v.vessel} (${v.id}) work complete`); }
   });
 }
 
 // ---------- vessel ----------
-function arrive(v) { v.phase = 'ARRIVED'; v.ata = S.clock; log('VESSEL', `${v.vessel} (${v.id}) arrived at berth`); }
+// a quay holds one vessel from arrival until it departs
+const quayHolder = (quay, except) => S.visits.find(x => x !== except && x.quay === quay && ['ARRIVED', 'WORKING', 'COMPLETE'].includes(x.phase));
+function arrive(v) {
+  const other = quayHolder(v.quay, v);
+  if (other) {
+    if (!v.wait) log('VESSEL', `${v.vessel} (${v.id}) waiting: quay ${v.quay} is taken by ${other.vessel}`);
+    v.wait = `Waiting for quay ${v.quay} (${other.vessel})`;
+    return false;
+  }
+  v.wait = null; v.phase = 'ARRIVED'; v.ata = S.clock;
+  log('VESSEL', `${v.vessel} (${v.id}) arrived at quay ${v.quay}`);
+  return true;
+}
 function startWork(v) {
   let d = 0, l = 0;
   Object.values(S.units).forEach(u => {
@@ -451,6 +562,10 @@ function depart(v) {
 // ---------- rendering ----------
 function render() {
   $('clock').textContent = fmt(S.clock);
+  const ps = portState(S.clock);
+  const psText = { WORKING: 'WORKING', 'GATE CLOSED': `GATE CLOSED - opens ${fmt(nextGateOpen(S.clock))}`, SHABBAT: 'SHABBAT - no work until Sat 20:00' }[ps];
+  $('portState').textContent = psText;
+  $('portState').className = 'pstate ps-' + ps.replace(' ', '-');
   $('autoBtn').classList.toggle('on', !!autoTimer);
   $('nav').innerHTML = PAGES.map(([g, items]) => `<div class="grp">${g}</div>` +
     items.map(([id, label]) => `<a data-act="nav" data-id="${id}" class="${UI.page === id ? 'cur' : ''}" tabindex="0">${label}</a>`).join('')).join('');
@@ -459,11 +574,11 @@ function render() {
   $('log').innerHTML = S.log.slice(-40).reverse().map(e => `<div>${fmt(e.t)}  [${e.area.padEnd(6)}] ${esc(e.msg)}</div>`).join('');
   const busy = S.eq.filter(e => e.status === 'BUSY').length;
   const planned = S.wis.filter(w => w.status === 'PLANNED').length;
-  $('status').innerHTML = `<span>Ready. Educational simulator &ndash; not Navis software, not affiliated with Navis or Kaleris.</span>
+  $('status').innerHTML = `<span>${psText}. Educational simulator &ndash; not Navis software, not affiliated with Navis or Kaleris.</span>
     <span>User: trainee</span><span>Facility: DEMO</span><span>WI planned: ${planned}</span><span>Equipment busy: ${busy}/${S.eq.length}</span>`;
 }
 function header(title, concept, helpHe) {
-  return `<h1>${title}</h1><div class="concept">N4 concept: ${concept}</div>` + (PREFS.help ? `<div class="help">${helpHe}</div>` : '');
+  return `<h1 tabindex="0" data-tip="${esc(SCREEN_TIPS[UI.page])}">${title} <span class="q" aria-hidden="true">?</span></h1><div class="concept">N4 concept: ${concept}</div>` + (PREFS.help ? `<div class="help">${helpHe}</div>` : '');
 }
 const tag = (cls, text) => `<span class="tag ${cls}">${esc(text)}</span>`;
 const unitLink = id => `<a href="#" data-act="unit" data-id="${id}" class="mono">${id}</a>`;
@@ -478,7 +593,8 @@ const VIEWS = {
     const unbilled = S.charges.filter(c => !c.invoice).reduce((s, c) => s + c.amount, 0);
     const kpi = (v, l) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`;
     return header('Terminal Overview', 'Facility dashboard',
-      'זה מסך הסיכום של הנמל. כל מספר כאן הוא תוצאה של מה שקורה במסכים האחרים. כדי להתחיל: לחץ "Run 1 cycle" כמה פעמים (כל לחיצה = רבע שעה), האונייה הראשונה תגיע, ואז עבור ל-Vessel Visits ולחץ Start work.') +
+      'זה מסך הסיכום של הנמל. הנמל בנוי לפי נמל הדרום באשדוד, מוקטן פי 4: שני רציפים, 2 עגורני רציף, 4 בלוקים בחצר עם 2 עגורנים אוטומטיים בכל בלוק, ומסילת רכבת. בשבת (משישי 15:00 עד מוצאי שבת 20:00) שום מכונה לא מקבלת עבודה חדשה. כדי להתחיל: לחץ "Run 1 cycle" כמה פעמים (כל לחיצה = רבע שעה), האונייה הראשונה תגיע, ואז עבור ל-Vessel Visits ולחץ Start work.') +
+      layoutPanel() +
       `<div class="kpis">${kpi(inYard + ' / ' + slots, 'Units in yard / slots')}${kpi(Math.round(inYard / slots * 100) + '%', 'Yard occupancy')}
       ${kpi(atBerth.length, 'Vessels at berth')}${kpi(S.wis.filter(w => w.status !== 'COMPLETE').length, 'Open work instructions')}
       ${kpi(S.stats.moves, 'Moves completed')}${kpi(S.stats.rehandles, 'Rehandles (wasted moves)')}
@@ -488,12 +604,13 @@ const VIEWS = {
   },
   vessels() {
     return header('Vessel Visits', 'Vessel Visit (phases inbound / arrived / working / complete / departed)',
-      'כל אונייה שמגיעה לנמל היא "ביקור". קודם היא בדרך (INBOUND), מגיעה לרציף (ARRIVED), מתחילים לפרוק ולהעמיס (WORKING), מסיימים (COMPLETE) ויוצאת (DEPARTED). Start work יוצר רשימת משימות לעגורנים: לפרוק את המכולות שעל האונייה ולהעמיס את מכולות הייצוא שמחכות בחצר.') +
+      'כל אונייה שמגיעה לנמל היא "ביקור". קודם היא בדרך (INBOUND), מגיעה לרציף (ARRIVED), מתחילים לפרוק ולהעמיס (WORKING), מסיימים (COMPLETE) ויוצאת (DEPARTED). Start work יוצר רשימת משימות לעגורנים: לפרוק את המכולות שעל האונייה ולהעמיס את מכולות הייצוא שמחכות בחצר. לכל אונייה יש רציף (27 או 28). על כל רציף יכולה לעמוד רק אונייה אחת, ואונייה שהרציף שלה תפוס מחכה בחוץ עד שהאונייה הקודמת יוצאת.') +
       `<fieldset><legend>Create vessel visit</legend><form class="row" data-form="visit">
         <label data-tip="שם האונייה. אפשר לכתוב כל שם.">Vessel <input name="vessel" required maxlength="30" value="MV Quay Example"></label>
         <label data-tip="חברת הספנות שהאונייה שלה. היא זו שתקבל את החשבונית.">Line <select name="line">${Object.keys(LINES).map(l => `<option value="${l}">${l} - ${LINES[l]}</option>`).join('')}</select></label>
         <label data-tip="בעוד כמה שעות האונייה צפויה להגיע לנמל.">ETA in hours <input name="eta" type="number" min="0" max="240" value="2" style="width:60px"></label>
         <label data-tip="כמה מכולות יבוא יש על האונייה, שיצטרכו לפרוק בנמל.">Import units on board <input name="imports" type="number" min="0" max="20" value="6" style="width:60px"></label>
+        <label data-tip="ליד איזה רציף האונייה תעגון. רציף 27 ארוך יותר (800 מ' במציאות), רציף 28 קצר יותר (445 מ'). אם הרציף תפוס, האונייה תחכה.">Quay <select name="quay">${QUAYS.map(q => `<option value="${q.id}">${q.id} (${q.real} m)</option>`).join('')}</select></label>
         <button data-tip="יוצר ביקור אונייה חדש ברשימה.">Create</button></form></fieldset>` + visitTable(S.visits, true);
   },
   yard() {
@@ -536,7 +653,7 @@ const VIEWS = {
     const open = S.visits.filter(v => !['DEPARTED'].includes(v.phase));
     const pickups = Object.values(S.units).filter(u => u.state === 'YARD' && !u.wi && u.category !== 'EXPORT');
     return header('Gate Transactions', 'Gate: truck visits, receive export / deliver import, hold checks',
-      'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר.') +
+      'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר. שעות השער כמו בנמל הדרום: ראשון עד חמישי 05:00-24:00, שישי 05:00-14:45, שבת סגור. משאית שמגיעה מחוץ לשעות נדחית, ורואים בטבלה מתי השער ייפתח.') +
       `<fieldset><legend>Receive (gate in)</legend><form class="row" data-form="gatein">
         <label data-tip="ייצוא = מכולה מלאה שתעלה על אונייה. ריקה = מכולה ריקה שחוזרת לנמל.">Type <select name="kind"><option value="EXPORT">Export full, booked to vessel</option><option value="EMPTY">Empty return</option></select></label>
         <label data-tip="לאיזו אונייה מכולת הייצוא מיועדת.">Vessel visit <select name="visit">${open.map(v => `<option value="${v.id}">${v.id} ${esc(v.vessel)} (${v.phase})</option>`).join('')}</select></label>
@@ -547,7 +664,7 @@ const VIEWS = {
         <label data-tip="איזו מכולה המשאית באה לקחת. מכולה עם [HOLD] תידחה בשער.">Unit to pick up <select name="unit">${pickups.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.holds.length ? '[HOLD]' : ''} @ ${posLabel(u)}</option>`).join('')}</select></label>
         <button data-tip="השער בודק את המכולה. אם אין עיכוב, נוצרת משימה להוציא אותה מהחצר למשאית." ${pickups.length ? '' : 'disabled'}>Gate out</button></form></fieldset>
       <table class="grid"><tr><th>Tx</th><th>Time</th><th>Truck</th><th>Type</th><th>Unit</th><th>Status</th><th>Reason / WI</th></tr>` +
-      S.gate.slice().reverse().map(g => `<tr><td>${g.id}</td><td>${fmt(g.time)}</td><td class="mono">${g.truck}</td><td>${g.kind}</td><td>${unitLink(g.unit)}</td><td>${tag('st-' + g.status, g.status)}</td><td>${esc(g.reason || g.wi || '')}</td></tr>`).join('') + '</table>';
+      S.gate.slice().reverse().map(g => `<tr><td>${g.id}</td><td>${fmt(g.time)}</td><td class="mono">${g.truck}</td><td>${g.kind}</td><td>${g.unit ? unitLink(g.unit) : '-'}</td><td>${tag('st-' + g.status, g.status)}</td><td>${esc(g.reason || g.wi || '')}</td></tr>`).join('') + '</table>';
   },
   work() {
     const groups = ['DISCHARGE', 'LOAD', 'GATE_IN', 'GATE_OUT'];
@@ -566,15 +683,15 @@ const VIEWS = {
   },
   equipment() {
     return header('Equipment (ECS)', 'Equipment Control System; QC, AGV/AHT Manager, ASC Manager',
-      'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ועגורן חצר אוטומטי (ASC) אחד לכל בלוק. ASC של בלוק עמוס הופך לצוואר בקבוק.') +
+      'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן, כמו בנמל הדרום מוקטן פי 4: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ו-2 עגורני חצר אוטומטיים (ASC) בכל בלוק, 8 בסך הכל. משימה בבלוק לוקחת את העגורן הפנוי מבין השניים. בשבת מכונה פנויה מסומנת SHABBAT ולא מקבלת עבודה.') +
       `<table class="grid"><tr><th>Equipment</th><th>Kind</th><th>Status</th><th>Current WI</th><th class="num">Moves done</th></tr>` +
-      S.eq.map(e => `<tr><td class="mono">${e.id}</td><td>${e.desc}</td><td>${tag(e.status === 'BUSY' ? 'st-DISPATCHED' : 'st-COMPLETE', e.status)}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
+      S.eq.map(e => `<tr><td class="mono">${e.id}</td><td>${e.desc}</td><td>${eqStatus(e)}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
   },
   billing() {
     const t = S.tariff;
     const unbilled = S.charges.filter(c => !c.invoice);
     return header('Charges & Invoices', 'Billing: tariffs, billable events, invoices, payments, credits',
-      'הנמל מרוויח מכל תנועה. כל הרמה של מכולה יוצרת חיוב. מכולה שנשארת בחצר יותר מימי החינם משלמת אחסנה ליום, והחיוב נרשם כשהיא יוצאת. "Generate invoices" מאגד את כל החיובים הפתוחים לחשבונית אחת לכל חברת ספנות. אפשר לתת זיכוי (Credit) על חיוב שגוי.') +
+      'הנמל מרוויח מכל תנועה. כל הרמה של מכולה יוצרת חיוב. מכולה שנשארת בחצר יותר מימי החינם משלמת אחסנה ליום, והחיוב נרשם כשהיא יוצאת. כל יום בלוח שבו המכולה הייתה בחצר נספר, חוץ משבת, כי שבת היא יום חופש בנמל. "Generate invoices" מאגד את כל החיובים הפתוחים לחשבונית אחת לכל חברת ספנות. אפשר לתת זיכוי (Credit) על חיוב שגוי.') +
       `<fieldset><legend>Tariffs</legend><form class="row" data-form="tariff">
         <label data-tip="כמה עולה כל הרמה של מכולה בעגורן.">Lift $ <input name="lift" type="number" min="0" value="${t.lift}" style="width:70px"></label>
         <label data-tip="כמה עולה כל מעבר של משאית בשער.">Gate fee $ <input name="gateFee" type="number" min="0" value="${t.gateFee}" style="width:70px"></label>
@@ -607,7 +724,8 @@ const VIEWS = {
       ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין תיאום תורים מראש (Appointments), אין מצלמות/OCR.'],
       ['Holds', 'עיכוב מכס חוסם יציאה בשער עד שמשחררים.', 'N4 תומך בעיכובים והרשאות על מכולות.', 'רק סוג עיכוב אחד.'],
       ['Work Queues', 'כל תנועה היא הוראת עבודה בתור לפי סוג.', 'N4 יוצר הוראות עבודה ושולח משימות למערכת בקרת הציוד (ECS).', 'כל תנועה לוקחת בדיוק 15 דקות.'],
-      ['Equipment (ECS)', 'QC, AGV, ASC לכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
+      ['נמל הדרום אשדוד', 'הנמל בנוי לפי נמל הדרום (HCT) מוקטן פי 4: רציפים 27 ו-28, 2 עגורני רציף, 8 עגורני חצר אוטומטיים ב-4 בלוקים, מסילת רכבת. אין עבודה משישי 15:00 עד מוצאי שבת 20:00, והשער פתוח לפי השעות הרשמיות.', 'לפי מקור ציבורי יחיד, נמל הדרום משתמש כנראה במערכת TOS של Konecranes, ולא ב-N4. הסימולטור נשאר "בסגנון N4" כמודל לימוד.', 'מספר המקומות בחצר לא אמיתי (לא פורסם). אין חגים ואין שעון קיץ. כלי ההסעה בין הרציף לחצר לא ידוע, ולכן AGV.'],
+      ['Equipment (ECS)', 'QC, AGV, ושני ASC בכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
       ['Billing', 'תעריפים, חיובי הרמה ושער, אחסנה אחרי ימי חינם, חשבוניות, תשלום, זיכוי.', 'N4 Billing: חשבוניות, תשלומים וזיכויים.', 'אין מע"מ, מטבעות או חוזים לפי לקוח.'],
       ['טכנולוגיה', 'קובץ HTML אחד שרץ בדפדפן, בלי שרת.', 'N4 בנוי על J2EE, עם חוקים עסקיים שמוגדרים בנתונים (metadata) ולא בקוד.', 'אין משתמשים, הרשאות או מסד נתונים.'],
       ['עוד לא קיים', 'רכבת, תיאום תורים, תכנון העמסה, הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
@@ -618,8 +736,33 @@ const VIEWS = {
       <p class="rtl note">מקורות ציבוריים: דף המוצר Automation של Kaleris, מקרה הבוחן של Long Beach Container Terminal, וכתבה ב-porttechnology.org על Navis N4 3.8. Navis ו-N4 הם סימנים מסחריים של בעליהם (Kaleris). הסימולטור הזה הוא כלי לימוד עצמאי, לא קשור אליהם, ולא מכיל קוד, תמונות או מסכים שלהם.</p>`;
   },
 };
+const eqStatus = e => e.status === 'BUSY' ? tag('st-DISPATCHED', 'BUSY')
+  : !isWorkTime(S.clock) ? tag('st-SHABBAT', 'SHABBAT') : tag('st-COMPLETE', e.status);
+// overview map: sea, the two quays drawn to scale, the AGV lane, the 4 blocks with their ASCs, the rail siding
+function layoutPanel() {
+  const PX = 1.6;   // pixels per scaled metre
+  const quays = QUAYS.map(q => {
+    const v = quayHolder(q.id);
+    const waiting = S.visits.filter(x => x.quay === q.id && x.wait).length;
+    return `<div class="quay" style="width:${Math.round(q.len * PX)}px"><b>Quay ${q.id}</b> <span class="note">${q.real} m real, ${q.len} m here</span>
+      <div>${v ? esc(v.vessel) + ' ' + tag('ph-' + v.phase, v.phase) : '<span class="note">free</span>'}${waiting ? ` <span class="note">(${waiting} waiting)</span>` : ''}</div></div>`;
+  }).join('');
+  const qcs = S.eq.filter(e => e.type === 'QC').map(e => `${e.id} ${eqStatus(e)}`).join(' ');
+  const agvs = S.eq.filter(e => e.type === 'AGV').map(e => `${e.id} ${eqStatus(e)}`).join(' ');
+  const blocks = BLOCKS.map(b => {
+    const used = Object.keys(S.stacks).filter(k => k[0] === b.id).reduce((n, k) => n + S.stacks[k].length, 0);
+    return `<div class="lblock"><b>Block ${b.id}</b> <span class="note">${b.use.join(' + ')}, ${used}/${b.bays * b.rows * MAX_TIER}</span>` +
+      S.eq.filter(e => e.type === 'ASC-' + b.id).map(e => `<div class="mono">${e.id} ${eqStatus(e)}</div>`).join('') + '</div>';
+  }).join('');
+  return `<fieldset><legend>Terminal layout &ndash; Ashdod South Port, scaled down x4</legend><div class="layout">
+    <div class="sea">Sea</div><div class="quays">${quays}</div>
+    <div class="lane"><span class="mono">Quay cranes: ${qcs}</span><span class="mono">AGV lane: ${agvs}</span></div>
+    <div class="lblocks">${blocks}</div>
+    <div class="rail">Rail siding &ndash; trains come in version 7</div></div>
+    <p class="note">Real port: 8 quay cranes and 30 automated stacking cranes. Here: 2 and 8.</p></fieldset>`;
+}
 function visitTable(list, actions) {
-  return `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Line</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">To discharge</th><th class="num">To load</th>${actions ? '<th>Actions</th>' : ''}</tr>` +
+  return `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Line</th><th>Quay</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">To discharge</th><th class="num">To load</th>${actions ? '<th>Actions</th>' : ''}</tr>` +
     list.map(v => {
       const us = Object.values(S.units).filter(u => u.visit === v.id);
       const disch = us.filter(u => u.category === 'IMPORT' && u.state === 'ON_VESSEL').length;
@@ -630,7 +773,7 @@ function visitTable(list, actions) {
         if (v.phase === 'ARRIVED') act = `<button class="sm" data-act="start" data-id="${v.id}">Start work</button>`;
         if (v.phase === 'COMPLETE' || v.phase === 'WORKING') act = `<button class="sm" data-act="depart" data-id="${v.id}" ${v.phase === 'WORKING' ? 'disabled title="Finish work first"' : ''}>Depart</button>`;
       }
-      return `<tr><td>${v.id}</td><td>${esc(v.vessel)}</td><td>${v.line}</td><td>${tag('ph-' + v.phase, v.phase)}</td><td>${fmt(v.eta)}</td>
+      return `<tr><td>${v.id}</td><td>${esc(v.vessel)}</td><td>${v.line}</td><td>${v.quay}</td><td>${tag('ph-' + v.phase, v.phase)}${v.wait ? ` <span class="note">${esc(v.wait)}</span>` : ''}</td><td>${fmt(v.eta)}</td>
         <td>${v.ata != null ? fmt(v.ata) : ''}</td><td>${v.atd != null ? fmt(v.atd) : ''}</td><td class="num">${disch}</td><td class="num">${load}</td>${actions ? `<td>${act}</td>` : ''}</tr>`;
     }).join('') + '</table>';
 }
@@ -657,7 +800,7 @@ const ACTIONS = {
   },
   save: () => { save(); flash('ok', 'Saved in this browser.'); },
   reset: () => { if (autoTimer) ACTIONS.auto(); fresh(); UI.stack = null; UI.unit = null; flash('ok', 'Demo terminal reset.'); },
-  arrive: id => arrive(visitById(id)),
+  arrive: id => { const v = visitById(id); if (!arrive(v)) flash('err', `${v.wait}. It can berth when that vessel departs.`); },
   start: id => startWork(visitById(id)),
   depart: id => depart(visitById(id)),
   stack: id => { UI.stack = UI.stack === id ? null : id; },
@@ -694,13 +837,23 @@ const ACTIONS = {
     flash('ok', 'Credit created. It will appear on the next invoice for ' + c.line + '.');
   },
 };
+// outside gate hours the truck is turned away and nothing else changes (no unit is created)
+function gateClosed(kind, unitId) {
+  const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind, unit: unitId,
+    status: 'REJECTED', reason: 'Gate closed until ' + fmt(nextGateOpen(S.clock)) };
+  S.gate.push(tx);
+  log('GATE', `${tx.truck} REJECTED: ${tx.reason}`);
+  flash('err', `Truck ${tx.truck} rejected: the gate is closed now (Sun-Thu 05:00-24:00, Fri 05:00-14:45, Sat closed). It opens ${fmt(nextGateOpen(S.clock))}.`);
+}
 const FORMS = {
   visit: f => {
-    const v = addVisit(f.vessel.trim() || 'MV Unnamed', f.line, Math.round(Number(f.eta) * 60), Math.min(20, Math.max(0, Number(f.imports) | 0)));
-    log('VESSEL', `Visit ${v.id} ${v.vessel} created, ETA ${fmt(v.eta)}`);
+    const v = addVisit(f.vessel.trim() || 'MV Unnamed', f.line, Math.round(Number(f.eta) * 60), Math.min(20, Math.max(0, Number(f.imports) | 0)),
+      QUAYS.some(q => q.id === f.quay) ? f.quay : '27');
+    log('VESSEL', `Visit ${v.id} ${v.vessel} created for quay ${v.quay}, ETA ${fmt(v.eta)}`);
     flash('ok', `Visit ${v.id} created.`);
   },
   gatein: f => {
+    if (!isGateOpen(S.clock)) return gateClosed('RECEIVE ' + f.kind, null);
     if (f.kind === 'EXPORT' && !f.visit) { flash('err', 'Export needs an open vessel visit.'); return; }
     const u = addUnit({ line: f.line, category: f.kind, iso: f.iso, visit: f.kind === 'EXPORT' ? f.visit : null, state: 'AT_GATE' });
     if (f.kind === 'EMPTY') u.weight = 2.2;
@@ -713,6 +866,7 @@ const FORMS = {
   gateout: f => {
     const u = S.units[f.unit];
     if (!u) return;
+    if (!isGateOpen(S.clock)) return gateClosed('DELIVER ' + u.category, u.id);
     const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind: 'DELIVER ' + u.category, unit: u.id };
     S.gate.push(tx);
     if (u.holds.length) {
