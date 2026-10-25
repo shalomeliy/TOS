@@ -1,6 +1,6 @@
-# Spec - Version 2: Automatic stowage plan (Autostow-style)
+# Spec - Version 3: Automatic stowage plan (Autostow-style)
 
-Status: **approved 2026-10-22** (D1 = a, D2 = a). Roadmap: `docs/ROADMAP.md` row 2.
+Status: **approved 2026-10-22** (D1 = a, D2 = a). Updated 2026-10-25 for the Ashdod port built in version 2 (no product decision changed). Roadmap: `docs/ROADMAP.md` row 3.
 
 ## Context and observed problem
 Today a vessel is a black box: LOAD work instructions run in creation order and loaded units just become `LOADED` with no position (`complete`, `cycle` in `index.html`). The learner never sees *where* a container goes on the ship, or why order matters. In real terminals that is the vessel planner's core job (public N4 concept: Vessel Autostow).
@@ -24,12 +24,16 @@ Shalom, learning. The question he should be able to answer after this version: "
 6. New screen "Stowage Plan" (under Vessel) shows one bay at a time; planned vs loaded vs violation are visible as text and shape, not only color.
 
 ## Non-goals (v2)
-- Learner editing the plan, drag and drop, "find the mistakes" exercise (that is version 3).
+- Learner editing the plan, drag and drop, "find the mistakes" exercise (that is version 4).
 - Ship stability, lashing, reefer plugs, dangerous goods, visibility line.
 - Real BAPLIE / EDI.
-- Splitting Unit vs Unit Visit (version 4).
+- Splitting Unit vs Unit Visit (version 5).
+- Splitting one vessel's work between the two quay cranes by bay (version 6, berth and crane planning).
 
 ## Assumptions
+- Port from version 2: 2 quay cranes, 8 ASCs (2 per block), quays 27 and 28. A plan belongs to one vessel visit, whatever quay it is at.
+- Shabbat (Fri 15:00 - Sat 20:00) pauses loading like any other work; the plan does not change, loading continues from the same slot after 20:00.
+- Tie-break: when two units are equal for the ship (same POD, same size, same weight), the one higher in its yard stack is loaded first (spike finding).
 - One ship layout shared by all vessels in the demo (e.g. 4 bays x 4 rows x 2 hold tiers + 2 deck tiers), sized so the demo vessels fit with some free slots.
 - Slot address shown as bay-row-tier with real-style numbers (hold tiers 02, 04..., deck tiers 82, 84...).
 - Weights stay seeded, but seeding becomes deterministic so tests are stable.
@@ -48,7 +52,7 @@ Shalom, learning. The question he should be able to answer after this version: "
 
 ## System / data implications (no file plan here)
 - Visit gains route and bay plan; unit gains POD and planned vessel slot.
-- Saved state from version 1 lacks these fields: loading an old save must not crash; old visits already working keep the old unplanned behavior.
+- Saved state from version 2 lacks these fields: a new `MIGRATE` step (version 2 -> 3) adds them; old visits already working keep the old unplanned behavior.
 - Plan is built when work starts and is then frozen, except for late arrivals (see states).
 
 ## Acceptance criteria (observable)
@@ -59,8 +63,9 @@ Shalom, learning. The question he should be able to answer after this version: "
 5. When loading finishes, every planned slot is loaded and every such unit is `LOADED`.
 6. Imports are discharged top tier first; their slots empty in that order.
 7. The Stowage screen shows planned / loaded / warning as text or outline, not color alone; slots are keyboard reachable buttons.
-8. Loading a version 1 save works with no console error.
+8. Loading a version 2 save (and, through the chain, a version 1 save) works with no console error.
 9. Reset builds a fresh demo with no plan left over.
+10. A vessel that starts loading on Friday afternoon stops at 15:00 with part of the plan loaded, and finishes the same plan after Saturday 20:00 with no rule break.
 
 ## States
 - **Empty**: visit not started: "No stowage plan yet. It is built when work starts." plus a preview.
@@ -89,10 +94,13 @@ User chose **D1 = (a)** and **D2 = (a)** on 2026-10-22.
 
 - **D1 - where POD comes from**: (a) each line has a fixed route, seeded exports get a random POD from it, gate-in form lets you pick (recommended); (b) random only; (c) always picked by hand.
 - **D2 - rule break**: (a) warning only, loading continues (recommended for v2; the auto-planner itself never breaks rules, only late arrivals can); (b) block the load until fixed.
-- Decided without asking (reversible): 20'/40' in separate bays; one ship layout for all vessels; "watch the planner" now, "be the planner" in version 3.
+- Decided without asking (reversible): 20'/40' in separate bays; one ship layout for all vessels; "watch the planner" now, "be the planner" in version 4.
 
 ## Expert input (fan-in)
 - Product: smallest valuable version is a readable automatic plan; drag mode is a separate feature (moved to v3). Risk: plan order fights yard order, so show yard rehandles on purpose.
 - Architecture: keep plan on the visit and slot on the unit, single file, add state normalization on load, gate LOAD on "slot below filled", discharge top first.
 - Design: one bay at a time like a real bay plan, fill = POD, outline = loaded vs planned, weight as a mode switch, violations by border + "!" + text, slots as buttons.
 - QA: rules must be testable without the UI, deterministic seed, old-save test, define late gate-in and full-plan behavior before building.
+
+## Spike re-run on the Ashdod port (2026-10-25)
+Same spike, now with 8 ASCs and 2 quay cranes: 10 exports 9 / 9 cycles (was 17), 24 exports 16 / 16 cycles (was 31). Yard rehandles plan vs arrival order: 0-4 vs 7 and 7-12 vs 18. Rule breaks if loaded in arrival order: 1-3 and 4-10. 0 floating slots, all loaded, 0 errors. Verdict still **GO**. Details in `docs/spikes/stowage-plan.md`.

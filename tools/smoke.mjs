@@ -30,7 +30,7 @@ const state = () => page.evaluate(() => JSON.parse(JSON.stringify(window.TOS.sta
 check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO 6346 check digit');
 
 // every page renders
-for (const id of ['overview', 'vessels', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -38,7 +38,7 @@ for (const id of ['overview', 'vessels', 'yard', 'inventory', 'gate', 'work', 'e
 
 // rule: every control (button, link, field) and every screen title has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -152,7 +152,7 @@ check(rules.fmt.startsWith('Thu 22-Oct 06:00'), 'clock shows weekday: ' + rules.
 // equipment: 2 QC, 4 AGV, 8 ASC (2 per block)
 await page.click('[data-act="reset"]');
 s = await state();
-check(s.ver === 2, 'fresh state has version 2');
+check(s.ver === 3, 'fresh state has version 3');
 check(s.eq.filter(e => e.type === 'QC').length === 2 && s.eq.filter(e => e.type === 'AGV').length === 4 && s.eq.filter(e => e.type.startsWith('ASC-')).length === 8, 'equipment 2 QC / 4 AGV / 8 ASC');
 check(['A', 'B', 'C', 'D'].every(b => s.eq.filter(e => e.type === 'ASC-' + b).length === 2), 'two ASCs per block');
 await page.click('nav a[data-id="overview"]');
@@ -219,7 +219,7 @@ const v1s = JSON.parse(v1);
 await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), v1);
 await page.reload();
 s = await state();
-check(s.ver === 2 && s.clock === v1s.clock && Object.keys(s.units).length === Object.keys(v1s.units).length, 'v1 save upgraded, clock and units kept');
+check(s.ver === 3 && s.clock === v1s.clock && Object.keys(s.units).length === Object.keys(v1s.units).length, 'v1 save upgraded, clock and units kept');
 check(s.eq.filter(e => e.type.startsWith('ASC-')).length === 8 && !s.eq.some(e => /^ASC-[A-D]$/.test(e.id)), 'v1 save has 8 ASCs with new ids');
 check(s.wis.every(w => w.eq.every(id => s.eq.some(e => e.id === id))), 'every job points at existing equipment');
 check(s.visits.every(v => v.quay), 'every visit has a quay');
@@ -232,13 +232,116 @@ for (const bad of ['not json', JSON.stringify({ ver: 99, units: {} }), JSON.stri
   await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), bad);
   await page.reload();
   s = await state();
-  check(s.ver === 2 && (await page.textContent('.flash')).includes('could not be read'), 'bad save starts fresh with a message: ' + bad.slice(0, 20));
+  check(s.ver === 3 && (await page.textContent('.flash')).includes('could not be read'), 'bad save starts fresh with a message: ' + bad.slice(0, 20));
 }
+await page.click('[data-act="reset"]');
+
+// ---------- version 3: stowage plan ----------
+// a version 2 save with a vessel mid-loading converts and finishes in the old order (no plan)
+const v2raw = readFileSync(resolve('tools/fixtures/save-v2.json'), 'utf8');
+await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), v2raw);
+await page.reload();
+const v2run = await page.evaluate(() => {
+  const ok = S.ver === 3 && S.visits.every(v => 'plan' in v && v.onboard) && Object.values(S.units).filter(u => u.category === 'EXPORT').every(u => u.pod >= 1 && u.pod <= 3);
+  const working = S.visits.find(v => v.phase === 'WORKING');
+  let n = 0; while (S.wis.some(w => w.status !== 'COMPLETE') && n++ < 400) cycle();
+  return { ok, unplanned: working && working.plan === null, open: S.wis.filter(w => w.status !== 'COMPLETE').length };
+});
+check(v2run.ok && v2run.unplanned && v2run.open === 0, 'v2 save upgraded, working vessel finishes unplanned: ' + JSON.stringify(v2run));
+await page.click('[data-act="reset"]');
+
+// the same seed gives the same demo (weights, holds, PODs)
+check(await page.evaluate(() => { const a = JSON.stringify(Object.values(S.units).map(u => [u.weight, u.pod, u.holds])); fresh(); return a === JSON.stringify(Object.values(S.units).map(u => [u.weight, u.pod, u.holds])); }), 'fresh demo is repeatable');
+
+// plan rules, loading never floats, discharge top first, late gate-in
+await page.click('[data-act="reset"]');
+const stow = await page.evaluate(() => {
+  const v1 = S.visits[0], v2 = S.visits[1];
+  arrive(v1); startWork(v1); arrive(v2); startWork(v2);
+  const r = { exports: 0, planned: 0, breaks: 0, sizeMix: 0, floatLoad: 0, floatDisch: 0 };
+  const ex = Object.values(S.units).filter(u => u.visit === v2.id && u.category === 'EXPORT');
+  r.exports = ex.length; r.planned = ex.filter(u => v2.plan[u.vslot]?.unit === u.id).length;
+  for (const k of Object.keys(v2.plan)) { if (ruleBreak(v2, k)) r.breaks++; if (SHIP.bays[slotParts(k).bay] !== sizeOf(S.units[v2.plan[k].unit])) r.sizeMix++; }
+  const first = { ...v1.onboard };
+  // late export for the last stop, gated in while the vessel is loading
+  const late = addUnit({ line: 'RED', category: 'EXPORT', iso: '22G1', visit: v2.id, state: 'AT_GATE', pod: 3 });
+  newWI('GATE_IN', late);
+  let n = 0;
+  while (S.wis.some(w => w.status !== 'COMPLETE') && n++ < 400) {
+    cycle();
+    for (const k of Object.keys(v2.onboard)) if (slotBelow(k) && !v2.onboard[slotBelow(k)]) r.floatLoad++;
+    for (const k of Object.keys(v1.onboard)) if (slotBelow(k) && first[slotBelow(k)] && !v1.onboard[slotBelow(k)]) r.floatDisch++;
+  }
+  r.allLoaded = Object.entries(v2.plan).every(([k, p]) => v2.onboard[k] === p.unit && S.units[p.unit].state === 'LOADED');
+  r.importsOff = Object.keys(v1.onboard).length === 0;
+  r.late = { slot: late.vslot, state: late.state, isLate: !!v2.plan[late.vslot]?.late };
+  return r;
+});
+check(stow.planned === stow.exports && stow.exports >= 10, `every yard export has a slot (${stow.planned}/${stow.exports})`);
+check(stow.breaks === 0 && stow.sizeMix === 0, `plan breaks no rule (${stow.breaks}) and never mixes 20/40 (${stow.sizeMix})`);
+check(stow.floatLoad === 0, 'no box is ever loaded above an empty slot, got ' + stow.floatLoad);
+check(stow.floatDisch === 0 && stow.importsOff, 'imports leave top tier first, got ' + stow.floatDisch);
+check(stow.allLoaded, 'every planned slot is loaded at the end');
+check(stow.late.isLate && stow.late.state === 'LOADED', 'late gate-in gets a free slot and loads: ' + JSON.stringify(stow.late));
+
+// late exports for a vessel that still has imports on board must not be planned on top of an import (review finding)
+await page.click('[data-act="reset"]');
+const lateOnImports = await page.evaluate(() => {
+  const v = addVisit('MV Big', 'BLU', 0, 20, '28');
+  arrive(v); startWork(v);
+  for (let i = 0; i < 2; i++) { const u = addUnit({ line: 'BLU', category: 'EXPORT', iso: '22G1', visit: v.id, state: 'AT_GATE', pod: 1 + i }); newWI('GATE_IN', u); }
+  let n = 0; while (v.phase === 'WORKING' && n++ < 400) cycle();
+  return { phase: v.phase, open: S.wis.filter(w => w.visit === v.id && w.status !== 'COMPLETE').map(w => w.note) };
+});
+check(lateOnImports.phase === 'COMPLETE', 'vessel with imports and late exports completes: ' + JSON.stringify(lateOnImports));
+
+// more exports than 40' slots: the rest are short-shipped and stay in the yard
+await page.click('[data-act="reset"]');
+const shortRun = await page.evaluate(() => {
+  const v = S.visits[1];
+  for (let i = 0; i < 20; i++) { const u = addUnit({ line: 'RED', category: 'EXPORT', iso: '45G1', visit: v.id, state: 'YARD', inTime: 0 }); placeUnit(u, planSlot(u)); }
+  arrive(v); startWork(v);
+  const short = Object.values(S.units).filter(u => u.short);
+  return { short: short.length, noJob: short.every(u => !u.wi && u.state === 'YARD'), slots40: Object.keys(v.plan).filter(k => SHIP.bays[slotParts(k).bay] === '40').length };
+});
+check(shortRun.short > 0 && shortRun.noJob && shortRun.slots40 === 16, 'overflow is short-shipped, stays in the yard: ' + JSON.stringify(shortRun));
+
+// Friday 12:00: loading stops at 15:00 part-way and finishes the same plan after Saturday 20:00
+await page.click('[data-act="reset"]');
+const fri = await page.evaluate(({ start, sat20 }) => {
+  const v = S.visits[1];
+  for (let i = 0; i < 14; i++) { const u = addUnit({ line: 'RED', category: 'EXPORT', iso: '22G1', visit: v.id, state: 'YARD', inTime: 0 }); placeUnit(u, planSlot(u)); }
+  S.clock = start; arrive(v); startWork(v);
+  const planBefore = JSON.stringify(Object.keys(v.plan).sort().map(k => k + v.plan[k].unit));
+  const loadedAt = () => Object.keys(v.onboard).length;
+  let atPause = null;
+  while (S.wis.some(w => w.status !== 'COMPLETE') && S.clock < start + 3000) { cycle(); if (S.clock === sat20 - 15) atPause = loadedAt(); }
+  return { atPause, planned: Object.keys(v.plan).length, end: loadedAt(), same: planBefore === JSON.stringify(Object.keys(v.plan).sort().map(k => k + v.plan[k].unit)),
+    breaks: Object.keys(v.plan).filter(k => ruleBreak(v, k)).length };
+}, { start: at(FRI, 12), sat20: at(SAT, 20) });
+check(fri.atPause > 0 && fri.atPause < fri.planned && fri.end === fri.planned && fri.same && fri.breaks === 0, 'Friday load pauses part-way and finishes the same plan: ' + JSON.stringify(fri));
+
+// the Stowage Plan screen: a bay, slots as buttons with labels, a Hebrew reason on click
+await page.click('[data-act="reset"]');
+await page.evaluate(() => { arrive(S.visits[1]); startWork(S.visits[1]); render(); });
+await page.click('nav a[data-id="vessels"]');
+check((await page.textContent('#content')).includes('10 planned, 0 loaded'), 'vessel table shows the plan count');
+await page.click('[data-act="stowOpen"][data-id="V002"]');
+check((await page.textContent('#content')).includes('Planned 10 / Loaded 0 / Warnings 0'), 'stowage summary line');
+const slotBtn = await page.$('button.slot[aria-label*="POD"]');
+check(!!slotBtn && /POD [A-Z]{5}/.test(await slotBtn.getAttribute('aria-label')), 'planned slot is a labelled button');
+await slotBtn.click();
+check(/[֐-׿]/.test(await page.textContent('.stowwrap')), 'slot click shows a Hebrew reason');
+await page.click('[data-act="bayNext"]');
+await page.click('[data-act="stowMode"][data-id="weight"]');
+check((await page.textContent('#content')).includes('Darker = heavier'), 'weight colour mode');
+await page.click('nav a[data-id="mapping"]');
+check((await page.textContent('#content')).includes('Autostow'), 'mapping page mentions Autostow');
 await page.click('[data-act="reset"]');
 
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'gate', 'equipment']) {
+for (const id of ['overview', 'vessels', 'stowage', 'gate', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }

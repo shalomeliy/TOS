@@ -49,6 +49,20 @@ input,select{font:inherit;background:#fff;padding:2px 3px;border:1px solid;borde
 .lblocks{display:flex;gap:6px}
 .lblock{background:#fff;border:1px solid #bbb;padding:3px 6px;min-width:150px}
 .rail{border-top:4px double #555;padding-top:2px;color:var(--muted)}
+.stowwrap{display:grid;grid-template-columns:auto minmax(0,300px);gap:12px;align-items:start}
+.baywrap{overflow-x:auto;min-width:0}
+.baygrid{display:grid;gap:3px;background:#fff;padding:6px;border:1px solid #bbb;width:max-content}
+.rowlbl,.tierlbl{font-size:10px;color:var(--muted);align-self:center;text-align:center}
+.hatch{grid-column:1/-1;border-top:5px solid #333;margin:2px 0}
+button.slot{height:42px;padding:1px;font-size:10px;line-height:1.25;background:#f7f7f7;box-shadow:none;border:1px solid #ccc}
+button.slot.planned{border:2px dashed #333}
+button.slot.on{border:2px solid #000}
+button.slot.warn{border:3px solid var(--hold);font-weight:bold}
+button.slot.cur{outline:2px solid var(--sel);outline-offset:1px}
+.pod1,button.slot.pod1{background:#dcebfb}.pod2,button.slot.pod2{background:#8fbbe8}.pod3,button.slot.pod3{background:#2f6db0;color:#fff}
+button.slot.planned{background-image:repeating-linear-gradient(45deg,#fff8 0 4px,transparent 4px 8px)}
+button.slot.impslot{background:var(--imp);color:#fff}
+.legend i.lg-planned{border:2px dashed #333;background:#fff}.legend i.lg-on{border:2px solid #000;background:#fff}.legend i.lg-warn{border:2px solid var(--hold);background:#fff}
 .main{display:grid;grid-template-columns:190px minmax(0,1fr);min-height:0;gap:4px;padding:4px}
 .sunken{background:var(--win);border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);box-shadow:inset 1px 1px var(--dark)}
 nav{overflow:auto;padding:4px 2px}
@@ -110,7 +124,7 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 @media (max-width:760px){
   .main{grid-template-columns:minmax(0,1fr)}
   nav{max-height:130px}
-  .yardwrap{grid-template-columns:1fr}
+  .yardwrap,.stowwrap{grid-template-columns:minmax(0,1fr)}
   .app{inset:0}
 }
 </style>
@@ -154,14 +168,19 @@ const BLOCKS = [
 ];
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
-const STATE_VER = 2;                              // bump when the saved shape changes, and add a MIGRATE step
+const STATE_VER = 3;                              // bump when the saved shape changes, and add a MIGRATE step
+// each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
+const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
+const PORTS = { GRPIR: 'Piraeus', ITGOA: 'Genoa', ESVLC: 'Valencia', TRMER: 'Mersin', NLRTM: 'Rotterdam', EGPSD: 'Port Said', GBFXT: 'Felixstowe' };
+// one ship layout for every vessel: 20' bays 01 and 03, 40' bay 06; 4 rows; tiers 02, 04 in the hold, 82, 84 on deck
+const SHIP = { bays: { '01': '20', '03': '20', '06': '40' }, rows: 4, tiers: ['02', '04', '82', '84'] };
 const DAYS = ['Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed'];   // T0 is Thursday 06:00 port time
 const LINES = { BLU: 'Blue Ocean Lines', RED: 'Red Anchor Shipping', GRN: 'Green Wave Carriers' };
 const OWNER = { BLU: 'BOLU', RED: 'RASU', GRN: 'GWCU' };
 const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer" };
 const PAGES = [
   ['Terminal', [['overview', 'Overview']]],
-  ['Vessel', [['vessels', 'Vessel Visits']]],
+  ['Vessel', [['vessels', 'Vessel Visits'], ['stowage', 'Stowage Plan']]],
   ['Yard', [['yard', 'Yard View'], ['inventory', 'Unit Inventory']]],
   ['Gate', [['gate', 'Gate Transactions']]],
   ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
@@ -172,6 +191,7 @@ const PAGES = [
 const PAGE_TIPS = {
   overview: 'מסך הסיכום: כמה מכולות יש, כמה עבודה פתוחה, וכמה כסף נכנס.',
   vessels: 'רשימת האוניות: יצירת אונייה חדשה, הגעה לרציף, התחלת עבודה ויציאה.',
+  stowage: 'תוכנית ההעמסה: איזו מכולה עולה לאיזה מקום באונייה, ולמה.',
   yard: 'מפת החצר: איפה כל מכולה עומדת. לחיצה על ערימה מראה מה בתוכה.',
   inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן משחררים עיכוב מכס.',
   gate: 'השער: משאיות שמביאות מכולות, או באות לקחת מכולות.',
@@ -184,7 +204,8 @@ const PAGE_TIPS = {
 // per-screen tooltip on the screen title: what you see here, and what you can do here
 const SCREEN_TIPS = {
   overview: 'מה רואים: מפה של הנמל (ים, שני רציפים, עגורנים, 4 בלוקים ומסילת רכבת) וסיכום של כל הנמל: כמה מכולות בחצר, כמה אוניות ברציף, כמה עבודה פתוחה וכמה כסף. מה אפשר לעשות: רק להסתכל. הפעולות עצמן נעשות במסכים האחרים.',
-  vessels: 'מה רואים: כל האוניות, ליד איזה רציף כל אחת, ובאיזה שלב היא (בדרך, ברציף, בעבודה, סיימה, יצאה). מה אפשר לעשות: ליצור אונייה חדשה ולבחור לה רציף, להביא אותה לרציף, להתחיל עבודה ולשלוח אותה לדרך.',
+  vessels: 'מה רואים: כל האוניות, ליד איזה רציף כל אחת, באיזה שלב היא (בדרך, ברציף, בעבודה, סיימה, יצאה), וכמה מקומות בתוכנית ההעמסה כבר מלאים. מה אפשר לעשות: ליצור אונייה חדשה ולבחור לה רציף, להביא אותה לרציף, להתחיל עבודה, לפתוח את תוכנית ההעמסה ולשלוח אותה לדרך.',
+  stowage: 'מה רואים: חתך של האונייה, bay אחד בכל פעם: שורות לרוחב, קומות לגובה, קו עבה בין הבטן (למטה) לסיפון (למעלה). מקום עם קו מקווקו = מתוכנן, מלא = כבר על האונייה, אדום עם ! = אזהרה. מה אפשר לעשות: לבחור אונייה ו-bay, להחליף צבע לפי נמל יעד או לפי משקל, וללחוץ על מקום כדי לקרוא למה המכולה שם.',
   yard: 'מה רואים: מפת החצר, בלוק אחרי בלוק, וכל ערימה של מכולות לפי צבע הסוג. מה אפשר לעשות: ללחוץ על ערימה ולראות אילו מכולות בתוכה, מלמעלה למטה.',
   inventory: 'מה רואים: רשימה של כל המכולות, עם הסוג, המיקום, המשקל, ימי האחסנה והעיכובים. מה אפשר לעשות: לשחרר עיכוב מכס, ולהציג גם מכולות שכבר יצאו.',
   gate: 'מה רואים: כל המשאיות שהגיעו לשער, ומה קרה לכל אחת (התקבלה, או נדחתה ולמה, למשל עיכוב מכס או שער סגור). מה אפשר לעשות: להכניס משאית עם מכולה, או לשלוח משאית לקחת מכולה מהחצר. השער פתוח א\'-ה\' 05:00-24:00, שישי 05:00-14:45, שבת סגור.',
@@ -204,6 +225,13 @@ const TIPS = {
   arrive: 'האונייה מגיעה לרציף עכשיו, בלי לחכות לשעה המתוכננת.',
   start: 'מתחילים לעבוד על האונייה: נוצרות משימות לפרוק את המכולות שעליה ולהעמיס את מכולות הייצוא.',
   depart: 'האונייה יוצאת מהנמל. מכולות ייצוא שלא הספיקו לעלות נשארות מאחור.',
+  stowOpen: 'פותח את תוכנית ההעמסה של האונייה הזאת: איזו מכולה עולה לאיזה מקום באונייה.',
+  stowVisit: 'מציג את תוכנית ההעמסה של האונייה הזאת.',
+  bay: el => `מציג את bay ${el.dataset.id}: חתך אחד של האונייה. ${SHIP.bays[el.dataset.id] === '40' ? "ב-bay הזה עומדות רק מכולות של 40 רגל." : "ב-bay הזה עומדות רק מכולות של 20 רגל."}`,
+  bayPrev: 'עובר ל-bay הקודם באונייה.',
+  bayNext: 'עובר ל-bay הבא באונייה.',
+  stowMode: el => el.dataset.id === 'pod' ? 'צובע כל מקום לפי נמל היעד: כהה = נמל אחרון במסלול, בהיר = נמל ראשון.' : 'צובע כל מקום לפי המשקל: כהה = כבדה, בהיר = קלה.',
+  slot: 'מקום אחד באונייה (bay-שורה-קומה). לחיצה מסבירה איזו מכולה כאן ולמה דווקא כאן.',
   stack: 'ערימה בחצר. לחיצה מראה אילו מכולות בתוכה, מלמעלה למטה.',
   unit: 'לחיצה מראה איפה המכולה הזאת נמצאת עכשיו.',
   release: 'משחרר את עיכוב המכס. אחרי זה משאית יכולה לקחת את המכולה.',
@@ -240,7 +268,8 @@ function fmt(min) {
 const blockOf = pos => pos ? pos[0] : null;
 const stackKey = (b, bay, row) => `${b}-${String(bay).padStart(2, '0')}-${row}`;
 const posLabel = u => {
-  if (!u.pos) return { ON_VESSEL: 'Vessel', AT_GATE: 'Gate lane', LOADED: 'Vessel', DEPARTED: 'Gone' }[u.state] || '-';
+  if (!u.pos) return ({ ON_VESSEL: 'Vessel', AT_GATE: 'Gate lane', LOADED: 'Vessel', DEPARTED: 'Gone' }[u.state] || '-') +
+    (u.vslot && ['ON_VESSEL', 'LOADED'].includes(u.state) ? ' ' + u.vslot : '');
   return u.pos + '-T' + (S.stacks[u.pos].indexOf(u.id) + 1);
 };
 const visitById = id => S.visits.find(v => v.id === id);
@@ -264,6 +293,78 @@ function storageDays(from, to) {
 }
 const portState = m => !isWorkTime(m) ? 'SHABBAT' : !isGateOpen(m) ? 'GATE CLOSED' : 'WORKING';
 
+// seeded random (mulberry32) kept in the state, so a day can be replayed exactly in tests
+function rand() {
+  let t = (S.rng = (S.rng + 0x6D2B79F5) | 0);
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+// ---------- vessel stowage (Autostow-style) ----------
+const sizeOf = u => u.iso[0] === '4' ? '40' : '20';
+const slotKey = (bay, row, tier) => `${bay}-${String(row).padStart(2, '0')}-${tier}`;
+const slotParts = k => { const [bay, row, tier] = k.split('-'); return { bay, row: Number(row), tier }; };
+const slotStep = (k, d) => { const p = slotParts(k), t = SHIP.tiers[SHIP.tiers.indexOf(p.tier) + d]; return t ? slotKey(p.bay, p.row, t) : null; };
+const slotBelow = k => slotStep(k, -1), slotAbove = k => slotStep(k, 1);
+// fill order for one size: bottom tier first, across every bay of that size and every row
+function shipSlots(size) {
+  const out = [];
+  for (const tier of SHIP.tiers) for (const [bay, s] of Object.entries(SHIP.bays)) if (s === size)
+    for (let r = 1; r <= SHIP.rows; r++) out.push(slotKey(bay, r, tier));
+  return out;
+}
+const podCode = (v, pod) => ROUTES[v.line][pod - 1];
+const yardTier = u => u.pos ? S.stacks[u.pos].indexOf(u.id) : -1;
+// the unit that is (or will be) in a slot: on board now, else planned there
+const unitAt = (v, k) => v.onboard[k] ? S.units[v.onboard[k]] : v.plan && v.plan[k] ? S.units[v.plan[k].unit] : null;
+// the export that will stand in a slot once imports are off: planned there, or already loaded there
+const exportAt = (v, k) => v.plan && v.plan[k] ? S.units[v.plan[k].unit]
+  : v.onboard[k] && S.units[v.onboard[k]].category === 'EXPORT' ? S.units[v.onboard[k]] : null;
+// rule for one stack: a box above must leave at the same port or earlier, and inside one port be no heavier
+function ruleBreak(v, k) {
+  const u = exportAt(v, k), below = slotBelow(k) && exportAt(v, slotBelow(k));
+  if (!u || !below) return null;
+  if (u.pod > below.pod) return `Goes to ${podCode(v, u.pod)} (stop ${u.pod}) but sits on a box for ${podCode(v, below.pod)} (stop ${below.pod}): at stop ${below.pod} this box must be moved first.`;
+  if (u.pod === below.pod && u.weight > below.weight) return `Heavier (${u.weight} t) than the box under it (${below.weight} t) for the same port.`;
+  return null;
+}
+// built once when work starts: later stop lower, then heavier lower, then higher in the yard first
+function buildPlan(v) {
+  v.plan = {};
+  let seq = 0, short = 0;
+  for (const size of ['20', '40']) {
+    const units = Object.values(S.units).filter(u => u.visit === v.id && u.category === 'EXPORT' && u.state === 'YARD' && !u.wi && sizeOf(u) === size)
+      .sort((a, b) => b.pod - a.pod || b.weight - a.weight || yardTier(b) - yardTier(a));
+    const slots = shipSlots(size);
+    units.forEach((u, i) => {
+      if (i >= slots.length) { short++; u.short = true; log('VESSEL', `${u.id} short-shipped: no ${size}' slot left on ${v.vessel}`); return; }
+      v.plan[slots[i]] = { unit: u.id, seq: seq++ }; u.vslot = slots[i]; u.short = false;
+    });
+  }
+  return short;
+}
+// export gated in while its vessel is already working: lowest slot of its size with no export planned or loaded,
+// standing on an export (an import still on board does not count: it leaves before loading starts)
+function lateSlot(v, u) {
+  const k = shipSlots(sizeOf(u)).find(s => !exportAt(v, s) && (!slotBelow(s) || exportAt(v, slotBelow(s))));
+  if (!k) return null;
+  v.plan[k] = { unit: u.id, seq: Math.max(-1, ...Object.values(v.plan).map(p => p.seq)) + 1, late: true };
+  u.vslot = k;
+  return k;
+}
+// one-line Hebrew reason shown when the learner clicks a slot
+function slotReason(v, k) {
+  const u = unitAt(v, k);
+  if (!u) return 'מקום ריק.';
+  if (u.category === 'IMPORT') return `מכולת יבוא שהגיעה על האונייה. היא יורדת כאן באשדוד. בפריקה מורידים קודם את הקומה העליונה, כי אי אפשר להרים מכולה שיש עליה מכולה אחרת.`;
+  const stop = { 1: 'הנמל הראשון במסלול, לכן היא למעלה: יורידו אותה ראשונה.', 2: 'נמל באמצע המסלול, לכן באמצע.', 3: 'הנמל האחרון במסלול, לכן היא למטה: אף אחד לא יצטרך להזיז אותה בנמלים שלפני כן.' }[u.pod];
+  let t = `נוסעת ל-${podCode(v, u.pod)} (${PORTS[podCode(v, u.pod)]}). ${stop} משקל ${u.weight} טון: בין מכולות לאותו נמל, הכבדות למטה כדי שהאונייה תהיה יציבה.`;
+  if (v.plan && v.plan[k] && v.plan[k].late) t += ' המכולה הגיעה לשער אחרי שההעמסה התחילה, ולכן קיבלה את המקום הפנוי הנמוך ביותר.';
+  if (ruleBreak(v, k)) t += ' אזהרה: המקום הזה שובר חוק. ' + (u.pod > exportAt(v, slotBelow(k)).pod ? 'היא נוסעת רחוק יותר מהמכולה שמתחתיה, אז בנמל של המכולה התחתונה יצטרכו להזיז אותה קודם.' : 'היא כבדה יותר מהמכולה שמתחתיה.');
+  return t;
+}
+
 // ISO 6346 check digit (letters skip multiples of 11)
 const LETTER = (() => { const m = {}; let v = 10; for (const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { if (v % 11 === 0) v++; m[c] = v++; } return m; })();
 function checkDigit(id10) {
@@ -279,7 +380,7 @@ function flash(type, text) { UI.msg = { type, text }; }
 // ---------- state ----------
 function fresh() {
   S = {
-    ver: STATE_VER, clock: 0, auto: false, workOn: true,
+    ver: STATE_VER, clock: 0, auto: false, workOn: true, rng: 20261022,
     seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0 },
     units: {}, stacks: {}, visits: [], wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
     stats: { rehandles: 0, moves: 0 },
@@ -309,20 +410,25 @@ function fresh() {
   log('SYSTEM', 'Demo terminal created. ' + v1.vessel + ' due ' + fmt(v1.eta) + ', ' + v2.vessel + ' due ' + fmt(v2.eta) + '.');
 }
 function addUnit(p) {
-  const u = Object.assign({ holds: [], visit: null, pos: null, inTime: null, outTime: null, wi: null, weight: 0 }, p);
+  const u = Object.assign({ holds: [], visit: null, pos: null, inTime: null, outTime: null, wi: null, weight: 0, pod: null, vslot: null }, p);
   u.id = newCntr(u.line);
-  u.weight = u.category === 'EMPTY' ? 2.2 : Math.round((8 + Math.random() * 18) * 10) / 10;
+  u.weight = u.category === 'EMPTY' ? 2.2 : Math.round((8 + rand() * 18) * 10) / 10;
+  if (u.category === 'EXPORT' && !u.pod) u.pod = 1 + Math.floor(rand() * 3);
   S.units[u.id] = u;
   return u;
 }
 // two ASCs share each block; both have the block's type, so dispatch takes whichever is free
 const newASC = (block, n) => ({ id: `ASC-${block}${n}`, type: 'ASC-' + block, desc: `Automated stacking crane ${n}, block ${block}`, status: 'IDLE', wi: null, moves: 0 });
 function addVisit(vessel, line, etaIn, imports, quay) {
-  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, quay: quay || '27', wait: null, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null };
+  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, quay: quay || '27', wait: null, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null,
+    plan: null, onboard: {} };
   S.visits.push(v);
   for (let i = 0; i < imports; i++) {
     const u = addUnit({ line, category: 'IMPORT', iso: i % 3 ? '22G1' : (i % 2 ? '45G1' : '22R1'), visit: v.id, state: 'ON_VESSEL' });
-    if (Math.random() < 0.25) u.holds.push('CUSTOMS');
+    if (rand() < 0.25) u.holds.push('CUSTOMS');
+    // imports arrive stowed bottom-up in the same fill order the planner uses
+    const k = shipSlots(sizeOf(u)).find(s => !v.onboard[s]);
+    if (k) { v.onboard[k] = u.id; u.vslot = k; }
   }
   return v;
 }
@@ -349,6 +455,14 @@ const MIGRATE = {
     });
     s.visits.forEach((v, i) => { if (!v.quay) v.quay = QUAYS[i % QUAYS.length].id; v.wait = null; });
     s.workOn = true;
+  },
+  2(s) {   // version 2 -> 3: stowage plan. Visits already working keep the old unplanned order (plan = null)
+    s.rng = s.rng || 20261022;
+    s.visits.forEach(v => { v.plan = v.plan || null; v.onboard = v.onboard || {}; });
+    Object.values(s.units).forEach((u, i) => {
+      u.vslot = u.vslot || null;
+      if (u.category === 'EXPORT' && !u.pod) u.pod = 1 + (i % 3);
+    });
   },
 };
 function normalize(s) {
@@ -466,7 +580,10 @@ function tryDispatch(wi) {
 function complete(wi) {
   const u = S.units[wi.unit];
   const t = S.tariff;
+  const v = visitById(u.visit);
   if (wi.kind === 'DISCHARGE') {
+    if (v && u.vslot && v.onboard[u.vslot] === u.id) delete v.onboard[u.vslot];
+    u.vslot = null;
     placeUnit(u, wi.dest); u.state = 'YARD'; u.inTime = S.clock;
     charge(u, 'LIFT_DISCH', t.lift, 'Vessel discharge');
   } else if (wi.kind === 'GATE_IN') {
@@ -476,6 +593,7 @@ function complete(wi) {
   } else if (wi.kind === 'LOAD') {
     wi.from = posLabel(u);
     retrieve(u, wi); u.state = 'LOADED'; u.outTime = S.clock;
+    if (v && u.vslot) v.onboard[u.vslot] = u.id;
     charge(u, 'LIFT_LOAD', t.lift, 'Vessel load'); chargeStorage(u);
   } else if (wi.kind === 'GATE_OUT') {
     wi.from = posLabel(u);
@@ -489,9 +607,12 @@ function complete(wi) {
   S.stats.moves++;
   log('ECS', `${wi.id} ${wi.kind} ${u.id} done -> ${wi.kind === 'DISCHARGE' || wi.kind === 'GATE_IN' ? wi.dest : u.state}` + (wi.rehandles ? ` (${wi.rehandles} rehandle${wi.rehandles > 1 ? 's' : ''})` : ''));
   // an export that arrives while its vessel is working joins the load queue
-  if (wi.kind === 'GATE_IN' && u.category === 'EXPORT') {
-    const v = visitById(u.visit);
-    if (v && v.phase === 'WORKING') newWI('LOAD', u, { visit: v.id });
+  if (wi.kind === 'GATE_IN' && u.category === 'EXPORT' && v && v.phase === 'WORKING') {
+    if (!v.plan) newWI('LOAD', u, { visit: v.id });
+    else if (lateSlot(v, u)) {
+      newWI('LOAD', u, { visit: v.id, seq: v.plan[u.vslot].seq });
+      log('VESSEL', `Late export ${u.id} planned to ${v.vessel} slot ${u.vslot}` + (ruleBreak(v, u.vslot) ? ' (warning: breaks a stowage rule)' : ''));
+    } else { u.short = true; log('VESSEL', `${u.id} short-shipped: no ${sizeOf(u)}' slot left on ${v.vessel}`); }
   }
 }
 function cycle() {
@@ -507,12 +628,22 @@ function cycle() {
   }
   const planned = S.wis.filter(w => w.status === 'PLANNED');
   if (!work) { planned.forEach(w => { w.note = 'Shabbat'; }); return finishVisits(); }
-  // discharge before load on the same vessel; then by creation order
+  // discharge before load on the same vessel; discharge top tier first, load in plan order, the rest by creation
   const order = { DISCHARGE: 0, GATE_IN: 1, GATE_OUT: 1, LOAD: 2 };
+  const rank = w => {
+    const u = S.units[w.unit];
+    if (w.kind === 'LOAD' && w.seq != null) return w.seq;
+    if (w.kind === 'DISCHARGE' && u.vslot) return -SHIP.tiers.indexOf(slotParts(u.vslot).tier);
+    return w.created;
+  };
   planned
-    .sort((a, b) => order[a.kind] - order[b.kind] || a.created - b.created)
+    .sort((a, b) => order[a.kind] - order[b.kind] || rank(a) - rank(b))
     .forEach(w => {
+      const u = S.units[w.unit], v = visitById(w.visit);
       if (w.kind === 'LOAD' && S.wis.some(d => d.kind === 'DISCHARGE' && d.visit === w.visit && d.status !== 'COMPLETE')) { w.note = 'After discharge'; return; }
+      // a box cannot float: the slot below must hold its box first; a box cannot be lifted out from under another
+      if (w.kind === 'LOAD' && v && v.plan && u.vslot && slotBelow(u.vslot) && !v.onboard[slotBelow(u.vslot)]) { w.note = 'Slot below not loaded'; return; }
+      if (w.kind === 'DISCHARGE' && v && u.vslot && slotAbove(u.vslot) && v.onboard[slotAbove(u.vslot)]) { w.note = 'Slot above not discharged'; return; }
       tryDispatch(w);
     });
   finishVisits();
@@ -539,14 +670,15 @@ function arrive(v) {
 }
 function startWork(v) {
   let d = 0, l = 0;
+  const short = buildPlan(v);
   Object.values(S.units).forEach(u => {
     if (u.visit !== v.id || u.wi) return;
     if (u.category === 'IMPORT' && u.state === 'ON_VESSEL') { newWI('DISCHARGE', u, { visit: v.id }); d++; }
-    if (u.category === 'EXPORT' && u.state === 'YARD') { newWI('LOAD', u, { visit: v.id }); l++; }
+    if (u.category === 'EXPORT' && u.state === 'YARD' && v.plan[u.vslot]?.unit === u.id) { newWI('LOAD', u, { visit: v.id, seq: v.plan[u.vslot].seq }); l++; }
   });
   v.phase = 'WORKING';
-  log('VESSEL', `${v.vessel}: work started, ${d} discharge + ${l} load instructions created`);
-  flash('ok', `${d} discharge and ${l} load work instructions created. Run cycles to execute them.`);
+  log('VESSEL', `${v.vessel}: work started, stowage plan built (${l} slots), ${d} discharge + ${l} load instructions created` + (short ? `, ${short} short-shipped` : ''));
+  flash('ok', `${d} discharge and ${l} load work instructions created, following the stowage plan.` + (short ? ` ${short} export(s) did not fit and stay in the yard.` : '') + ' Run cycles to execute them.');
 }
 function depart(v) {
   v.phase = 'DEPARTED'; v.atd = S.clock;
@@ -554,7 +686,11 @@ function depart(v) {
   Object.values(S.units).forEach(u => {
     if (u.visit !== v.id) return;
     if (u.state === 'LOADED') u.state = 'DEPARTED';
-    else if (u.category === 'EXPORT' && u.state !== 'DEPARTED') rolled++;
+    else if (u.category === 'EXPORT' && u.state !== 'DEPARTED') {
+      rolled++;
+      if (v.plan && u.vslot && v.plan[u.vslot]?.unit === u.id) delete v.plan[u.vslot];
+      u.vslot = null;
+    }
   });
   log('VESSEL', `${v.vessel} departed` + (rolled ? `, ${rolled} export(s) rolled (left behind)` : ''));
 }
@@ -613,6 +749,72 @@ const VIEWS = {
         <label data-tip="ליד איזה רציף האונייה תעגון. רציף 27 ארוך יותר (800 מ' במציאות), רציף 28 קצר יותר (445 מ'). אם הרציף תפוס, האונייה תחכה.">Quay <select name="quay">${QUAYS.map(q => `<option value="${q.id}">${q.id} (${q.real} m)</option>`).join('')}</select></label>
         <button data-tip="יוצר ביקור אונייה חדש ברשימה.">Create</button></form></fieldset>` + visitTable(S.visits, true);
   },
+  stowage() {
+    const open = S.visits.filter(v => v.phase !== 'DEPARTED');
+    const v = open.find(x => x.id === UI.stowVisit) || open.find(x => x.phase === 'WORKING') || open[0];
+    const head = header('Stowage Plan', 'Vessel planning; Vessel Autostow (automatic slot planning by rules)',
+      'כל אונייה מחולקת ל-bays (חתכים לאורך האונייה). בכל bay יש שורות לרוחב וקומות לגובה: קומות 02 ו-04 בבטן האונייה, 82 ו-84 על הסיפון. כשמתחילים עבודה, המערכת בונה תוכנית: מכולה שנוסעת לנמל האחרון במסלול עומדת למטה, ובין מכולות לאותו נמל הכבדות למטה. כך באף נמל לא צריך להזיז מכולה כדי להגיע למכולה שמתחתיה, והאונייה יציבה. בהעמסה מכולה עולה רק אחרי שהמקום שמתחתיה מלא, ובפריקה מורידים קודם את העליונה.');
+    if (!v) return head + '<p class="note">No vessel visits.</p>';
+    UI.stowVisit = v.id;
+    const bays = Object.keys(SHIP.bays), bay = bays.includes(UI.bay) ? UI.bay : bays[0], bi = bays.indexOf(bay);
+    const mode = UI.stowMode === 'weight' ? 'weight' : 'pod';
+    const plan = v.plan || {};
+    const planned = Object.keys(plan).length, loaded = Object.entries(plan).filter(([k, p]) => v.onboard[k] === p.unit).length;
+    const warns = Object.keys(plan).filter(k => ruleBreak(v, k)).length;
+    const short = Object.values(S.units).filter(u => u.visit === v.id && u.short).length;
+    const yardReh = S.wis.filter(w => w.visit === v.id && w.kind === 'LOAD').reduce((n, w) => n + (w.rehandles || 0), 0);
+    const visits = open.map(x => `<button class="sm ${x.id === v.id ? 'on' : ''}" data-act="stowVisit" data-id="${x.id}">${x.id} ${esc(x.vessel)}</button>`).join(' ');
+    const bayBtns = `<button class="sm" data-act="bayPrev" ${bi ? '' : 'disabled'}>&lt; Prev</button> ` +
+      bays.map(b => `<button class="sm ${b === bay ? 'on' : ''}" data-act="bay" data-id="${b}">Bay ${b} (${SHIP.bays[b]}')</button>`).join(' ') +
+      ` <button class="sm" data-act="bayNext" ${bi < bays.length - 1 ? '' : 'disabled'}>Next &gt;</button>`;
+    const modes = ['pod', 'weight'].map(m => `<button class="sm ${m === mode ? 'on' : ''}" data-act="stowMode" data-id="${m}">Colour by ${m === 'pod' ? 'POD' : 'weight'}</button>`).join(' ');
+    // cross-section: deck tiers on top, a thick hatch line, hold tiers below
+    let grid = '<div></div>' + Array.from({ length: SHIP.rows }, (_, r) => `<div class="rowlbl">Row ${String(r + 1).padStart(2, '0')}</div>`).join('');
+    SHIP.tiers.slice().reverse().forEach(tier => {
+      if (tier === '04') grid += '<div class="hatch" aria-hidden="true"></div>';
+      grid += `<div class="tierlbl">${tier}</div>`;
+      for (let r = 1; r <= SHIP.rows; r++) {
+        const k = slotKey(bay, r, tier), u = unitAt(v, k), on = !!v.onboard[k], warn = ruleBreak(v, k);
+        let cls = 'slot', txt = '', state = 'empty', style = '';
+        if (u) {
+          state = on ? (u.category === 'IMPORT' ? 'import on board' : 'loaded') : 'planned';
+          cls += on ? ' on' : ' planned';
+          if (u.category === 'IMPORT') { cls += ' impslot'; txt = 'IMP<br>Ashdod'; }
+          else {
+            txt = `${podCode(v, u.pod)}<br>${u.weight} t`;
+            if (mode === 'pod') cls += ' pod' + u.pod;
+            else style = ` style="background:hsl(210,70%,${Math.round(92 - (u.weight - 8) * 2.4)}%);color:${u.weight > 19 ? '#fff' : '#000'}"`;
+          }
+        }
+        // an import still on board where an export is planned: show both, the export goes in after discharge
+        const next = on && v.plan && v.plan[k] && v.plan[k].unit !== v.onboard[k] ? S.units[v.plan[k].unit] : null;
+        if (next) txt += `<br>then ${podCode(v, next.pod)}`;
+        if (warn) { cls += ' warn'; txt = '! ' + txt; }
+        const label = `Slot ${k}: ${state}${u ? `, ${u.id}${u.category === 'EXPORT' ? `, POD ${podCode(v, u.pod)}, ${u.weight} t` : ''}` : ''}` +
+          (next ? `, then planned ${next.id}, POD ${podCode(v, next.pod)}, ${next.weight} t` : '') + (warn ? ', warning' : '');
+        grid += `<button class="${cls}${UI.slot === k ? ' cur' : ''}" data-act="slot" data-id="${k}" aria-label="${esc(label)}"${style}>${txt || '&nbsp;'}</button>`;
+      }
+    });
+    let side = '<p class="note">Click a slot to see which box is there and why.</p>';
+    const su = UI.slot && UI.slot.startsWith(bay) ? unitAt(v, UI.slot) : null;
+    if (UI.slot && UI.slot.startsWith(bay)) {
+      side = `<b>Slot ${UI.slot}</b> <span class="note">(bay-row-tier)</span>` + (su ? `<table class="grid"><tr><td>Unit</td><td>${unitLink(su.id)}</td></tr>
+        <tr><td>Status</td><td>${v.onboard[UI.slot] ? (su.category === 'IMPORT' ? 'On board, to discharge' : 'Loaded') : 'Planned'}</td></tr>
+        ${su.category === 'EXPORT' ? `<tr><td>POD</td><td>${podCode(v, su.pod)} ${PORTS[podCode(v, su.pod)]} (stop ${su.pod} of 3)</td></tr>` : ''}
+        <tr><td>Weight</td><td>${su.weight} t</td></tr><tr><td>Yard position</td><td class="mono">${posLabel(su)}</td></tr></table>` : '') +
+        `<p class="rtl">${esc(slotReason(v, UI.slot))}</p>` + (ruleBreak(v, UI.slot) ? `<p class="flash err">${esc(ruleBreak(v, UI.slot))}</p>` : '');
+    }
+    const route = ROUTES[v.line].map((c, i) => `${i + 1}. ${c} ${PORTS[c]}`).join(' &rarr; ');
+    return head + `<p>${visits}</p>
+      <p><b>${esc(v.vessel)}</b> (${v.id}, ${v.line}, quay ${v.quay}, ${v.phase}). Route after Ashdod: ${route}</p>
+      <p class="pstatus">${v.plan ? `Planned ${planned} / Loaded ${loaded} / Warnings ${warns}` + (short ? ` / Short-shipped ${short}` : '') +
+        ` &nbsp; Yard rehandles caused by this load: ${yardReh}` + (planned && loaded === planned ? ' ' + tag('st-COMPLETE', 'COMPLETE') : '')
+        : v.phase === 'INBOUND' || v.phase === 'ARRIVED' ? 'No stowage plan yet. It is built when work starts.' : 'No plan (this vessel started work before version 3).'}</p>
+      <p>${bayBtns} &nbsp; ${modes}</p>
+      <div class="stowwrap"><div class="baywrap"><div class="baygrid" style="grid-template-columns:34px repeat(${SHIP.rows},62px)">${grid}</div>
+      <div class="legend"><span><i class="lg-planned"></i>Planned (dashed)</span><span><i class="lg-on"></i>On board (solid)</span><span><i class="lg-warn"></i>! Warning</span>${mode === 'pod' ? '<span><i class="pod1"></i>Stop 1</span><span><i class="pod2"></i>Stop 2</span><span><i class="pod3"></i>Stop 3</span>' : '<span>Darker = heavier</span>'}</div></div>
+      <div>${side}</div></div>`;
+  },
   yard() {
     const sel = UI.stack;
     const blocks = BLOCKS.map(b => {
@@ -657,6 +859,7 @@ const VIEWS = {
       `<fieldset><legend>Receive (gate in)</legend><form class="row" data-form="gatein">
         <label data-tip="ייצוא = מכולה מלאה שתעלה על אונייה. ריקה = מכולה ריקה שחוזרת לנמל.">Type <select name="kind"><option value="EXPORT">Export full, booked to vessel</option><option value="EMPTY">Empty return</option></select></label>
         <label data-tip="לאיזו אונייה מכולת הייצוא מיועדת.">Vessel visit <select name="visit">${open.map(v => `<option value="${v.id}">${v.id} ${esc(v.vessel)} (${v.phase})</option>`).join('')}</select></label>
+        <label data-tip="לאיזה נמל מכולת הייצוא נוסעת: תחנה 1, 2 או 3 במסלול של האונייה. תחנה 3 היא האחרונה, ולכן מכולה כזו תעמוד למטה באונייה. למכולה ריקה זה לא משנה.">POD <select name="pod">${[1, 2, 3].map(p => `<option value="${p}">Stop ${p}${open[0] ? ' (' + open.map(v => v.id + ' ' + podCode(v, p)).join(', ') + ')' : ''}</option>`).join('')}</select></label>
         <label data-tip="חברת הספנות שהמכולה שייכת לה.">Line <select name="line">${Object.keys(LINES).map(l => `<option>${l}</option>`).join('')}</select></label>
         <label data-tip="סוג המכולה לפי תקן בינלאומי: 20 רגל רגילה, 40 רגל גבוהה, או 20 רגל מקוררת.">ISO <select name="iso">${Object.keys(ISO).map(i => `<option value="${i}">${i} ${ISO[i]}</option>`)}</select></label>
         <button data-tip="המשאית נכנסת עם המכולה, ונוצרת משימה לעגורן החצר להוריד אותה.">Gate in</button></form></fieldset>
@@ -717,7 +920,8 @@ const VIEWS = {
   },
   mapping() {
     const rows = [
-      ['Vessel Visits', 'ביקור אונייה עם 5 שלבים. Start work יוצר הוראות פריקה והעמסה.', 'N4 מנהל ביקורי אוניות ופעולות אונייה (Vessel).', 'אין תכנון רציף, אין תוכנית העמסה לפי מקום באונייה (Vessel Autostow).'],
+      ['Vessel Visits', 'ביקור אונייה עם 5 שלבים ורציף. Start work בונה תוכנית העמסה ויוצר הוראות פריקה והעמסה.', 'N4 מנהל ביקורי אוניות ופעולות אונייה (Vessel).', 'אין תכנון רציף עם חלונות זמן (גרסה 6).'],
+      ['Stowage Plan', 'תוכנית מקומות באונייה שנבנית אוטומטית: נמל אחרון למטה, כבדה מתחת לקלה, בלי לערבב 20 ו-40 רגל. ההעמסה הולכת לפי התוכנית, ומכולה לא עולה לפני שהמקום שמתחתיה מלא.', 'מודול Vessel Autostow של N4 מתכנן העמסה לפי חוקים, ומתכנן האונייה מאשר ומתקן.', 'אונייה אחת לכולם, 3 bays בלבד. אין יציבות, קשירה, קירור או מטען מסוכן. אי אפשר עדיין לתקן את התוכנית ביד (גרסה 4).'],
       ['Yard View + Unit Inventory', '4 בלוקים, 12 ערימות בכל אחד, עד 4 קומות. כל מכולה עם מיקום מדויק.', 'N4 מנהל את מלאי החצר ואת מיקום כל מכולה (Yard).', 'חצר קטנה מאוד. אין משקל/גובה ערימה מורכבים.'],
       ['בחירת מקום אוטומטית', 'חוק אחד: מכולות ייצוא של אותה אונייה נערמות יחד.', 'מודול Expert Decking: תכנון חצר מבוסס חוקים שאפשר להגדיר.', 'רק חוק אחד וקבוע. אי אפשר עדיין להגדיר חוקים.'],
       ['Rehandles', 'אם המכולה לא למעלה, מזיזים את מה שמעליה וסופרים.', 'זו המטרה העיקרית של תכנון חצר טוב: פחות הזזות מיותרות.', '-'],
@@ -728,7 +932,7 @@ const VIEWS = {
       ['Equipment (ECS)', 'QC, AGV, ושני ASC בכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
       ['Billing', 'תעריפים, חיובי הרמה ושער, אחסנה אחרי ימי חינם, חשבוניות, תשלום, זיכוי.', 'N4 Billing: חשבוניות, תשלומים וזיכויים.', 'אין מע"מ, מטבעות או חוזים לפי לקוח.'],
       ['טכנולוגיה', 'קובץ HTML אחד שרץ בדפדפן, בלי שרת.', 'N4 בנוי על J2EE, עם חוקים עסקיים שמוגדרים בנתונים (metadata) ולא בקוד.', 'אין משתמשים, הרשאות או מסד נתונים.'],
-      ['עוד לא קיים', 'רכבת, תיאום תורים, תכנון העמסה, הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
+      ['עוד לא קיים', 'רכבת, תיאום תורים, תכנון העמסה ביד, הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
     ];
     return header('How it maps to N4', 'Concept map', 'הטבלה מסבירה מה כל מסך בסימולטור מדגים, מה הרעיון המקביל במערכת N4 האמיתית (לפי מקורות ציבוריים בלבד), ומה פישטנו. המראה הוא "בסגנון N4", לא העתק: המסכים האמיתיים לא פומביים.') +
       `<table class="grid map rtl"><tr><th>מסך</th><th>מה יש בסימולטור</th><th>ב-N4 האמיתי</th><th>מה פישטנו</th></tr>` +
@@ -762,7 +966,7 @@ function layoutPanel() {
     <p class="note">Real port: 8 quay cranes and 30 automated stacking cranes. Here: 2 and 8.</p></fieldset>`;
 }
 function visitTable(list, actions) {
-  return `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Line</th><th>Quay</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">To discharge</th><th class="num">To load</th>${actions ? '<th>Actions</th>' : ''}</tr>` +
+  return `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Line</th><th>Quay</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">To discharge</th><th class="num">To load</th><th>Plan</th>${actions ? '<th>Actions</th>' : ''}</tr>` +
     list.map(v => {
       const us = Object.values(S.units).filter(u => u.visit === v.id);
       const disch = us.filter(u => u.category === 'IMPORT' && u.state === 'ON_VESSEL').length;
@@ -772,9 +976,15 @@ function visitTable(list, actions) {
         if (v.phase === 'INBOUND') act = `<button class="sm" data-act="arrive" data-id="${v.id}">Arrive now</button>`;
         if (v.phase === 'ARRIVED') act = `<button class="sm" data-act="start" data-id="${v.id}">Start work</button>`;
         if (v.phase === 'COMPLETE' || v.phase === 'WORKING') act = `<button class="sm" data-act="depart" data-id="${v.id}" ${v.phase === 'WORKING' ? 'disabled title="Finish work first"' : ''}>Depart</button>`;
+        if (v.phase !== 'DEPARTED') act += ` <button class="sm" data-act="stowOpen" data-id="${v.id}">Stowage plan</button>`;
+      }
+      let planTxt = 'not planned';
+      if (v.plan) {
+        const ks = Object.keys(v.plan), w = ks.filter(k => ruleBreak(v, k)).length;
+        planTxt = `${ks.length} planned, ${ks.filter(k => v.onboard[k] === v.plan[k].unit).length} loaded` + (w ? `, ${w} warning${w > 1 ? 's' : ''}` : '');
       }
       return `<tr><td>${v.id}</td><td>${esc(v.vessel)}</td><td>${v.line}</td><td>${v.quay}</td><td>${tag('ph-' + v.phase, v.phase)}${v.wait ? ` <span class="note">${esc(v.wait)}</span>` : ''}</td><td>${fmt(v.eta)}</td>
-        <td>${v.ata != null ? fmt(v.ata) : ''}</td><td>${v.atd != null ? fmt(v.atd) : ''}</td><td class="num">${disch}</td><td class="num">${load}</td>${actions ? `<td>${act}</td>` : ''}</tr>`;
+        <td>${v.ata != null ? fmt(v.ata) : ''}</td><td>${v.atd != null ? fmt(v.atd) : ''}</td><td class="num">${disch}</td><td class="num">${load}</td><td>${planTxt}</td>${actions ? `<td>${act}</td>` : ''}</tr>`;
     }).join('') + '</table>';
 }
 function unitSummary(units) {
@@ -804,6 +1014,13 @@ const ACTIONS = {
   start: id => startWork(visitById(id)),
   depart: id => depart(visitById(id)),
   stack: id => { UI.stack = UI.stack === id ? null : id; },
+  stowOpen: id => { UI.page = 'stowage'; UI.stowVisit = id; UI.slot = null; },
+  stowVisit: id => { UI.stowVisit = id; UI.slot = null; },
+  bay: id => { UI.bay = id; UI.slot = null; },
+  bayPrev: () => { const b = Object.keys(SHIP.bays); UI.bay = b[Math.max(0, b.indexOf(UI.bay || b[0]) - 1)]; UI.slot = null; },
+  bayNext: () => { const b = Object.keys(SHIP.bays); UI.bay = b[Math.min(b.length - 1, b.indexOf(UI.bay || b[0]) + 1)]; UI.slot = null; },
+  stowMode: id => { UI.stowMode = id; },
+  slot: id => { UI.slot = UI.slot === id ? null : id; },
   unit: id => {
     const u = S.units[id];
     UI.unit = id;
@@ -855,7 +1072,8 @@ const FORMS = {
   gatein: f => {
     if (!isGateOpen(S.clock)) return gateClosed('RECEIVE ' + f.kind, null);
     if (f.kind === 'EXPORT' && !f.visit) { flash('err', 'Export needs an open vessel visit.'); return; }
-    const u = addUnit({ line: f.line, category: f.kind, iso: f.iso, visit: f.kind === 'EXPORT' ? f.visit : null, state: 'AT_GATE' });
+    const u = addUnit({ line: f.line, category: f.kind, iso: f.iso, visit: f.kind === 'EXPORT' ? f.visit : null, state: 'AT_GATE',
+      pod: f.kind === 'EXPORT' ? Math.min(3, Math.max(1, Number(f.pod) | 0)) : null });
     if (f.kind === 'EMPTY') u.weight = 2.2;
     const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind: 'RECEIVE ' + f.kind, unit: u.id, status: 'PLANNED' };
     tx.wi = newWI('GATE_IN', u).id;

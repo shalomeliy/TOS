@@ -28,3 +28,12 @@ No page errors.
 
 ## Verdict: **GO**
 Build as specced. Add the yard-tier tie-break above. Keep the "yard rehandles for this vessel" counter, since it now tells a positive story (plan order vs arrival order).
+
+## Re-run on the Ashdod port (version 2), 2026-10-25
+
+| exports | cycles base / plan | yard rehandles base / plan | rule breaks if base order were stowed | floating | loaded |
+|---|---|---|---|---|---|
+| 10 (5 seeds) | 9 / 9 | 7 / 0-4 | 1-3 | 0 | 10/10 |
+| 24 (5 seeds) | 16 / 16 | 18 / 7-12 | 4-10 | 0 | 24/24 |
+
+Two ASCs per block roughly halve the time. Plan order still costs no time and saves yard rehandles. Verdict stays **GO**.
