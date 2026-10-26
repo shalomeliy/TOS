@@ -1,6 +1,6 @@
 # Spec - Version 4: Stowage planning practice ("be the planner")
 
-Status: **draft, waiting for Shalom's approval** (2026-10-26). Roadmap: `docs/ROADMAP.md` row 4. Builds on version 3 (`docs/specs/stowage-plan.md`).
+Status: **decisions made by Shalom 2026-10-26: D1 = a, D2 = b** (practice only). Roadmap: `docs/ROADMAP.md` row 4. Builds on version 3 (`docs/specs/stowage-plan.md`).
 
 ## Context and observed problem
 In version 3 the computer builds the stowage plan and the learner only watches. The roadmap goal for version 4 is the other side: the learner is the vessel planner, places the containers himself, and the system marks every rule break and explains it. Today there is no way to put a container in a slot by hand.
@@ -11,7 +11,7 @@ Shalom, learning. After this version he should be able to answer: "if I put this
 ## Outcome
 - The learner plans a vessel by hand and sees, at once, which placements break which rule.
 - He can compare his plan with the automatic one, as a score.
-- Optionally he loads the vessel with his own plan and sees what it costs.
+- The real loading always follows the automatic plan, so practice can never break the simulation.
 
 ## Goal
 1. On the Stowage Plan screen, a vessel that is ARRIVED (not yet working) can be planned **by hand** instead of automatically: button "Plan it myself".
@@ -21,7 +21,7 @@ Shalom, learning. After this version he should be able to answer: "if I put this
    - **Soft rules (allowed, marked with a red "!" and the reason):** a box for a later stop above a box for an earlier stop (it will have to be moved at that port); a heavier box above a lighter one for the same port.
 4. The learner can remove a box from a slot (back to the list), or clear the whole plan and start again. A box that has another box on top of it cannot be removed: take the top one off first (same as on a real ship), and the refusal says so.
 5. A score line: "Placed 7 / 10, rule breaks 2 (1 port order, 1 weight)", and **"Compare with the automatic plan"**: the automatic plan's breaks (always 0) next to his, and how many extra moves his plan would cause at later ports.
-6. When every box is placed, "Start work with my plan" runs the vessel exactly like version 3, but with his slots. Rule breaks stay marked.
+6. Practice only (D2 = b): the hand plan is a separate practice board. It never changes the real plan; Start work always uses the automatic plan of version 3. After Start work the practice board stays visible, read-only, for comparison.
 7. "Let the computer plan" fills the rest automatically at any time.
 
 ## Non-goals
@@ -34,7 +34,6 @@ Shalom, learning. After this version he should be able to answer: "if I put this
 - Imports still on board do not block placement: the export slot is used after discharge, as in version 3.
 - "Extra moves at later ports" = for every box, 1 move for each box for an earlier stop anywhere under it in the same stack (it must be lifted off at that port and put back). A simple count, explained in Hebrew. The automatic plan always scores 0.
 - "Waiting to be placed" = the vessel's exports in the yard that have no slot yet, recomputed on every screen; an export that gates in during practice appears there too.
-- Load order of a hand plan is not the click order: at Start work every slot is renumbered bottom tier first, so loading never waits on a box that is not coming.
 - "Let the computer plan" places the boxes still waiting with the version 3 rules, around what is already placed, bottom-up; a box with no legal slot left is short-shipped as in version 3.
 - Saved state: `STATE_VER` 4; the step only bumps the number (a plan without `manual` is automatic).
 
@@ -52,8 +51,7 @@ Shalom, learning. After this version he should be able to answer: "if I put this
 - Every new button, list row, column, tag and score part gets a Hebrew tooltip (project rule).
 
 ## System / data implications
-- The visit's existing `plan` is reused; a hand placement writes the same `{ unit, seq }` entry, with `manual: true`. The order of loading follows the bottom-up order of the slots.
-- Start work keeps a hand-made plan instead of building a new one (only if the learner chose it).
+- The visit gets a separate `practice` board (`{ slot: unitId }`), never read by loading. The rule checks (`ruleBreak` style) run on the practice board.
 - Saved state: `STATE_VER` 4, a migration step that adds nothing harmful (old plans stay automatic).
 
 ## Acceptance criteria (observable)
@@ -63,7 +61,7 @@ Shalom, learning. After this version he should be able to answer: "if I put this
 4. Placing a stop-3 box above a stop-1 box is allowed and shows "!" with a reason; the score counts 1 port-order break.
 5. Removing a box returns it to the list and clears any warning it caused.
 6. "Compare" shows the automatic plan with 0 breaks next to the learner's count, and the extra-moves count.
-7. "Start work with my plan" loads every box into the learner's slots, never floating, and the vessel completes.
+7. Start work after a practice still builds and uses the automatic plan; the practice board is kept read-only and the vessel completes as in version 3.
 8. "Let the computer plan" fills the remaining boxes without breaking any rule given what is already placed (or marks the unavoidable ones).
 9. Keyboard: list rows and slots are buttons; the whole flow works without a mouse. 390 px: no sideways page scroll.
 10. Tooltip audit passes; old saves load.
@@ -89,5 +87,5 @@ Same patterns as version 3 (buttons, aria-labels, meaning not by colour alone). 
 - Architecture: renumber the load order bottom-up at Start work; reuse `buildPlan` without resetting for "let the computer plan"; use the export-only view for "no floating"; the save step is only a version bump. `index.html` stays one file (about 1300 lines, one clear stowage block); `HANDOFF.md` should keep only the current version's test guide, older guides live in `docs/guides/`.
 - Design: picking jumps to a fitting bay and shows the pick; one click meaning per state; Hebrew refusals with `aria-live`.
 
-## Spike (before plan)
-Riskiest assumption: a hand-made plan with soft breaks, and "let the computer fill the rest" on top of a partial hand plan, still loads with no floating box and no deadlock. The spike builds such plans in the page and runs the vessel.
+## Spike
+Skipped: with D2 = b the practice board never drives loading, so the risky part (a hand plan that deadlocks loading) is gone. Every remaining part is already proven in this project (rule checks in version 3, slot buttons, bottom-up fill).
