@@ -32,7 +32,7 @@ check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO
 check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
-for (const id of ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -40,7 +40,7 @@ for (const id of ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'inspec
 
 // rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -503,9 +503,73 @@ s = await state();
 check(s.units[goneId].transit === 'DEPARTED' && s.units[goneId].visits[0].outTime === 123 && s.units[goneId].visits[0].steps.length === 1, 'old departed container keeps its out time: ' + JSON.stringify(s.units[goneId].visits[0]));
 await page.click('[data-act="reset"]');
 
+// ---------- version 6: berth schedule and quay crane split ----------
+await page.click('[data-act="reset"]');
+s = await state();
+check(s.visits[0].cranes === 2 && s.visits[1].cranes === 1 && s.eq.filter(e => e.type === 'QC').every(e => e.vessel === null), 'seed visits ask for 2 and 1 quay cranes, none assigned yet');
+await page.click('nav a[data-id="berth"]');
+check((await page.$$('.bbar')).length === 2 && (await page.$$('.blbl')).length === 2 && !!(await page.$('.bnow')), 'berth plan shows two quays, two vessel bars and the now line');
+// the window estimate: V001 has 8 imports and no exports, 2 cranes -> 4 working cycles after its ETA (07:00) = 08:00
+let bw = await page.evaluate(() => berthWindow(S.visits[0]));
+check(bw.from === 60 && bw.to === 120 && bw.est, 'V001 window 07:00-08:00 estimated: ' + JSON.stringify(bw));
+await page.click('[data-act="cranes"][data-id="V001:1"]');
+bw = await page.evaluate(() => berthWindow(S.visits[0]));
+check(bw.to === 180, 'one crane doubles the stay (07:00-09:00): ' + JSON.stringify(bw));
+await page.click('[data-act="cranes"][data-id="V001:2"]');
+// a working vessel gets its cranes; a QC never works for another vessel
+await page.evaluate(() => { for (let i = 0; i < 4; i++) cycle(); startWork(S.visits[0]); render(); });
+s = await state();
+check(s.eq.filter(e => e.type === 'QC' && e.vessel === 'V001').length === 2, 'V001 gets both quay cranes when work starts');
+// V002 starts at the same time and has none: its jobs wait with a reason
+await page.evaluate(() => { arrive(S.visits[1]); startWork(S.visits[1]); cycle(); render(); });
+s = await state();
+const v2wi = s.wis.filter(w => w.visit === 'V002' && w.status === 'PLANNED');
+check(v2wi.length > 0 && v2wi.every(w => ['No quay crane assigned to this vessel', 'After discharge', 'Slot above not discharged'].includes(w.note)), 'V002 waits with no crane: ' + [...new Set(v2wi.map(w => w.note))]);
+check(s.wis.filter(w => w.status === 'DISPATCHED' && w.eq.some(id => id.startsWith('QC'))).every(w => w.visit === 'V001'), 'cranes only work for their own vessel');
+// the planner moves QC02 to V002: from the next cycle both vessels work
+await page.click('nav a[data-id="berth"]');
+await page.click('[data-act="qcAssign"][data-id="QC02:V002"]');
+await page.evaluate(() => { cycle(); cycle(); render(); });
+s = await state();
+check(s.wis.some(w => w.visit === 'V002' && w.eq.includes('QC02')), 'QC02 works for V002 after the move');
+noTip = await auditTips('berth');
+check(noTip.length === 0, 'tooltips missing on the berth schedule:\n  ' + noTip.join('\n  '));
+// when V001 finishes, its crane goes to V002 by itself; everything finishes
+const crane = await page.evaluate(() => {
+  let n = 0; while (S.visits[0].phase !== 'COMPLETE' && n++ < 100) cycle();
+  const freed = S.eq.filter(e => e.type === 'QC' && e.vessel === 'V002').length;
+  n = 0; while (S.visits[1].phase !== 'COMPLETE' && n++ < 200) cycle();
+  return { freed, done: S.visits[1].phase, after: S.eq.filter(e => e.type === 'QC' && e.vessel).length };
+});
+check(crane.freed === 1 && crane.done === 'COMPLETE' && crane.after === 0, 'V002 asks for 1 crane and gets one when V001 completes; all cranes free at the end: ' + JSON.stringify(crane));
+// conflict: a new vessel for quay 27 while V001 still holds it (complete, not departed)
+await page.click('nav a[data-id="vessels"]');
+await page.fill('form[data-form="visit"] input[name="eta"]', '0');
+await page.click('form[data-form="visit"] button');
+check((await page.textContent('.flash')).includes('booked by'), 'creating a visit on a taken quay warns about the conflict');
+await page.click('nav a[data-id="berth"]');
+check(!!(await page.$('.bbar.bconf')) && (await page.textContent('#content')).includes('CONFLICT'), 'berth plan marks the conflict');
+await page.click('[data-act="moveQuay"]');
+s = await state();
+check(s.visits.at(-1).quay === '28', 'move to the other quay');
+const etaBefore = s.visits.at(-1).eta;
+await page.click(`[data-act="etaShift"][data-id="${s.visits.at(-1).id}:60"]`);
+s = await state();
+check(s.visits.at(-1).eta === etaBefore + 60, 'ETA +1h');
+// Shabbat stretches the window: a 4-move job with 1 crane starting Fri 14:30 ends Sat 20:30 (2 cycles before, 2 after)
+const shabEnd = await page.evaluate(m => addWork(m, 4), 1440 + 14 * 60 + 30 - 360);
+check(shabEnd === 2880 + 20 * 60 + 30 - 360, 'Shabbat stretches the berth window: ' + shabEnd);
+// a version 5 save loads: visits get a crane request, quay cranes are free
+const v5 = JSON.parse(readFileSync(resolve('tools/fixtures/save-v4.json'), 'utf8'));
+await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), JSON.stringify(v5));
+await page.reload();
+s = await state();
+check(s.ver === CUR_VER && s.visits.every(v => v.cranes === 1) && s.eq.filter(e => e.type === 'QC').every(e => 'vessel' in e), 'old save gets cranes per visit and a vessel field per QC');
+await page.click('[data-act="reset"]');
+
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'stowage', 'inspector', 'gate', 'equipment']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'inspector', 'gate', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }

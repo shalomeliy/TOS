@@ -83,7 +83,7 @@ nav a::before{content:"";display:inline-block;width:10px;height:10px;margin-righ
 nav a.cur{background:var(--sel);color:#fff}
 .content{overflow:auto;padding:8px 10px;min-width:0}
 h1{font-size:15px;margin:0 0 2px;cursor:help}
-th,.tag,legend,.kpi,.legend span,h3,.quay,.sea,.rail,.lane>span,.eqname,.pstatus{cursor:help}
+th,.tag,legend,.kpi,.legend span,h3,.quay,.sea,.rail,.lane>span,.eqname,.pstatus,.bbar,.bday,.btick,.bshab,.bnow{cursor:help}
 h1 .q{display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;font-size:11px;border:1px solid var(--shadow);border-radius:50%;background:var(--win);color:var(--muted)}
 .concept{color:var(--muted);margin-bottom:6px}
 .help{direction:rtl;text-align:right;background:#ffffe1;border:1px solid #a0a070;padding:5px 8px;margin:6px 0 10px;line-height:1.5}
@@ -132,6 +132,18 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 .map td{white-space:normal;vertical-align:top;line-height:1.45}
 .rtl{direction:rtl;text-align:right}
 .note{color:var(--muted)}
+.btl{display:grid;grid-template-columns:64px max-content;gap:3px 4px;align-items:center}
+.blbl{font-weight:bold;cursor:help}
+.bscale{position:relative;height:30px}
+.bday{position:absolute;top:0;height:15px;border-left:1px solid #888;padding-left:3px;font-weight:bold;white-space:nowrap;overflow:hidden}
+.btick{position:absolute;top:15px;font-size:10px;color:var(--muted);padding-left:2px;border-left:1px solid #bbb;white-space:nowrap}
+.btrack{position:relative;height:46px;border:1px solid #bbb;background:linear-gradient(90deg,#e4e4e4 1px,transparent 1px) 0 0/168px 100% #fff}
+.bshab{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,#e3d6f5 0 4px,#efe7fa 4px 8px)}
+.bnow{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--hold)}
+.bbar{position:absolute;height:19px;line-height:17px;font-size:11px;padding:0 4px;border:1px solid #0006;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bbar.ph-INBOUND{background:#fff;border-style:dashed}
+.bbar.bconf{border:2px solid var(--hold);font-weight:bold}
+.legend i.lg-shab{background:#e3d6f5}.legend i.lg-now{border:0;border-left:2px solid var(--hold);width:4px}.legend i.lg-conf{border:2px solid var(--hold);background:#fff}
 @media (max-width:760px){
   .main{grid-template-columns:minmax(0,1fr)}
   nav{max-height:130px}
@@ -181,8 +193,8 @@ const BLOCKS = [
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
 // shown top right; bump on every push: <roadmap version>.<fix number inside it>
-const APP_VERSION = 'v5.1', APP_DATE = '26-10-2026';
-const STATE_VER = 5;                              // bump when the saved shape changes, and add a MIGRATE step
+const APP_VERSION = 'v6.0', APP_DATE = '26-10-2026';
+const STATE_VER = 6;                              // bump when the saved shape changes, and add a MIGRATE step
 // each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
 const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
 const PORTS = { GRPIR: 'Piraeus', ITGOA: 'Genoa', ESVLC: 'Valencia', TRMER: 'Mersin', NLRTM: 'Rotterdam', EGPSD: 'Port Said', GBFXT: 'Felixstowe' };
@@ -194,7 +206,7 @@ const OWNER = { BLU: 'BOLU', RED: 'RASU', GRN: 'GWCU' };
 const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer" };
 const PAGES = [
   ['Terminal', [['overview', 'Overview']]],
-  ['Vessel', [['vessels', 'Vessel Visits'], ['stowage', 'Stowage Plan']]],
+  ['Vessel', [['vessels', 'Vessel Visits'], ['berth', 'Berth Schedule'], ['stowage', 'Stowage Plan']]],
   ['Yard', [['yard', 'Yard View'], ['inventory', 'Unit Inventory'], ['inspector', 'Unit Inspector']]],
   ['Gate', [['gate', 'Gate Transactions']]],
   ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
@@ -205,6 +217,7 @@ const PAGES = [
 const PAGE_TIPS = {
   overview: 'מסך הסיכום: כמה מכולות יש, כמה עבודה פתוחה, וכמה כסף נכנס.',
   vessels: 'רשימת האוניות: יצירת אונייה חדשה, הגעה לרציף, התחלת עבודה ויציאה.',
+  berth: 'לוח הרציפים: איזו אונייה עוגנת באיזה רציף ומתי, וכמה עגורני רציף כל אונייה מקבלת.',
   stowage: 'תוכנית ההעמסה: איזו מכולה עולה לאיזה מקום באונייה, ולמה. כאן גם מתרגלים תכנון בעצמך.',
   yard: 'מפת החצר: איפה כל מכולה עומדת. לחיצה על ערימה מראה מה בתוכה.',
   inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן משחררים עיכוב מכס.',
@@ -220,6 +233,7 @@ const PAGE_TIPS = {
 const SCREEN_TIPS = {
   overview: 'מה רואים: מפה של הנמל (ים, שני רציפים, עגורנים, 4 בלוקים ומסילת רכבת) וסיכום של כל הנמל: כמה מכולות בחצר, כמה אוניות ברציף, כמה עבודה פתוחה וכמה כסף. מה אפשר לעשות: רק להסתכל. הפעולות עצמן נעשות במסכים האחרים.',
   vessels: 'מה רואים: כל האוניות, ליד איזה רציף כל אחת, באיזה שלב היא (בדרך, ברציף, בעבודה, סיימה, יצאה), וכמה מקומות בתוכנית ההעמסה כבר מלאים. מה אפשר לעשות: ליצור אונייה חדשה ולבחור לה רציף, להביא אותה לרציף, להתחיל עבודה, לפתוח את תוכנית ההעמסה ולשלוח אותה לדרך.',
+  berth: 'מה רואים: ציר זמן של יומיים לכל רציף (27 ו-28). כל פס הוא אונייה: מתי היא מגיעה ועד מתי היא תתפוס את הרציף. מקווקו = עוד בדרך (תכנון), מלא = כבר ליד הרציף, אדום עם ! = שתי אוניות רוצות את אותו רציף באותו זמן. שבת מסומנת בפסים סגולים, והקו האדום הוא עכשיו. מתחת: טבלת האוניות וטבלת עגורני הרציף. מה אפשר לעשות: לבחור לכל אונייה 1 או 2 עגורני רציף, להעביר אונייה שעוד בדרך לרציף השני, להקדים או לדחות את ההגעה שלה בשעה, ולהעביר עגורן רציף מאונייה לאונייה.',
   stowage: 'מה רואים: חתך של האונייה, bay אחד בכל פעם: שורות לרוחב, קומות לגובה, קו עבה בין הבטן (למטה) לסיפון (למעלה). מקום עם קו מקווקו = מתוכנן, מלא = כבר על האונייה, אדום עם ! = אזהרה. מה אפשר לעשות: לבחור אונייה ו-bay, להחליף צבע לפי נמל יעד או לפי משקל, וללחוץ על מקום כדי לקרוא למה המכולה שם. תרגול: באונייה שעוד לא התחילו לעבוד עליה לוחצים Plan it myself, בוחרים מכולה מהרשימה ולוחצים על מקום. המערכת חוסמת מה שבלתי אפשרי ומסמנת ב-! טעות תכנון, ובסוף אפשר להשוות לתוכנית של המחשב.',
   yard: 'מה רואים: מפת החצר, בלוק אחרי בלוק, וכל ערימה של מכולות לפי צבע הסוג. מה אפשר לעשות: ללחוץ על ערימה ולראות אילו מכולות בתוכה, מלמעלה למטה.',
   inspector: 'מה רואים: מכולה אחת לעומק. למעלה המכולה עצמה (מספר, בעלים, סוג: לא משתנים). מתחת הביקורים שלה (UFV): כל פעם שהייתה בנמל, איך הגיעה ואיך יצאה. מתחת שבעת שלבי החיים של הביקור שנבחר, עם השעה של כל שלב, ואז ההזזות והחיובים של אותו ביקור. מה אפשר לעשות: לחפש מכולה, לבחור ביקור (Show), ולקפוץ למקום שלה בחצר.',
@@ -241,6 +255,10 @@ const TIPS = {
   arrive: 'האונייה מגיעה לרציף עכשיו, בלי לחכות לשעה המתוכננת.',
   start: 'מתחילים לעבוד על האונייה: נוצרות משימות לפרוק את המכולות שעליה ולהעמיס את מכולות הייצוא.',
   depart: 'האונייה יוצאת מהנמל. מכולות ייצוא שלא הספיקו לעלות נשארות מאחור.',
+  cranes: el => `קובע שהאונייה הזאת תקבל ${el.dataset.id.split(':')[1]} עגורני רציף. יותר עגורנים = העבודה נגמרת מהר יותר והאונייה מפנה את הרציף מוקדם, אבל לאונייה השנייה נשאר פחות.`,
+  moveQuay: 'מעביר את האונייה (שעוד בדרך) לרציף השני. טוב כשהרציף שלה תפוס בזמן שהיא מגיעה.',
+  etaShift: el => el.dataset.id.endsWith('-60') ? 'מקדים את ההגעה של האונייה בשעה אחת.' : 'דוחה את ההגעה של האונייה בשעה אחת, למשל כדי שתגיע אחרי שהרציף מתפנה.',
+  qcAssign: el => `מעביר את עגורן הרציף ${el.dataset.id.split(':')[0]} לעבוד על האונייה ${el.dataset.id.split(':')[1]}. אם הוא באמצע הזזה, הוא מסיים אותה קודם.`,
   stowOpen: 'פותח את תוכנית ההעמסה של האונייה הזאת: איזו מכולה עולה לאיזה מקום באונייה.',
   stowVisit: 'מציג את תוכנית ההעמסה של האונייה הזאת.',
   bay: el => `מציג את bay ${el.dataset.id}: חתך אחד של האונייה. ${SHIP.bays[el.dataset.id] === '40' ? "ב-bay הזה עומדות רק מכולות של 40 רגל." : "ב-bay הזה עומדות רק מכולות של 20 רגל."}`,
@@ -515,13 +533,13 @@ function fresh() {
     tariff: { lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 },
   };
   for (const b of BLOCKS) for (let bay = 1; bay <= b.bays; bay++) for (let row = 1; row <= b.rows; row++) S.stacks[stackKey(b.id, bay, row)] = [];
-  ['QC01', 'QC02'].forEach(id => S.eq.push({ id, type: 'QC', desc: 'Quay crane', status: 'IDLE', wi: null, moves: 0 }));
+  ['QC01', 'QC02'].forEach(id => S.eq.push({ id, type: 'QC', desc: 'Quay crane', status: 'IDLE', wi: null, moves: 0, vessel: null }));
   ['AGV01', 'AGV02', 'AGV03', 'AGV04'].forEach(id => S.eq.push({ id, type: 'AGV', desc: 'Automated guided vehicle', status: 'IDLE', wi: null, moves: 0 }));
   BLOCKS.forEach(b => [1, 2].forEach(n => S.eq.push(newASC(b.id, n))));
 
   // seed: an earlier vessel left imports in the yard, some under customs hold
-  const v1 = addVisit('MV Training Star', 'BLU', 60, 8, '27');
-  const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6, '28');
+  const v1 = addVisit('MV Training Star', 'BLU', 60, 8, '27', 2);
+  const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6, '28', 1);
   for (let i = 0; i < 6; i++) {
     const u = addUnit({ line: i % 2 ? 'GRN' : 'BLU', category: 'IMPORT', iso: i % 3 ? '22G1' : '45G1', state: 'YARD', inTime: -5 * 1440 - i * 90 });
     if (i === 1 || i === 4) u.holds.push('CUSTOMS');
@@ -552,8 +570,8 @@ function addUnit(p) {
 }
 // two ASCs share each block; both have the block's type, so dispatch takes whichever is free
 const newASC = (block, n) => ({ id: `ASC-${block}${n}`, type: 'ASC-' + block, desc: `Automated stacking crane ${n}, block ${block}`, status: 'IDLE', wi: null, moves: 0 });
-function addVisit(vessel, line, etaIn, imports, quay) {
-  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, quay: quay || '27', wait: null, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null,
+function addVisit(vessel, line, etaIn, imports, quay, cranes) {
+  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, quay: quay || '27', cranes: cranes || 1, wait: null, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null,
     plan: null, onboard: {} };
   S.visits.push(v);
   for (let i = 0; i < imports; i++) {
@@ -576,6 +594,10 @@ function load() {
 }
 // one step per saved version; each step brings a save up by one version
 const MIGRATE = {
+  5(s) {   // version 5 -> 6: berth schedule. Every visit asks for one quay crane; cranes are handed out at the next cycle
+    s.visits.forEach(v => { v.cranes = v.cranes || 1; });
+    s.eq.forEach(e => { if (e.type === 'QC') e.vessel = e.vessel || null; });
+  },
   1(s) {   // version 1 -> 2: Ashdod layout (two ASCs per block, quays)
     const ren = {};
     BLOCKS.forEach(b => { ren['ASC-' + b.id] = `ASC-${b.id}1`; });
@@ -712,8 +734,8 @@ function tryDispatch(wi) {
   }
   const picked = [];
   for (const type of needs(wi, dest)) {
-    const e = S.eq.find(x => x.type === type && x.status === 'IDLE' && !picked.includes(x));
-    if (!e) { wi.note = 'Waiting for ' + type; return false; }
+    const e = S.eq.find(x => x.type === type && x.status === 'IDLE' && !picked.includes(x) && (type !== 'QC' || x.vessel === wi.visit));
+    if (!e) { wi.note = type === 'QC' && !S.eq.some(x => x.type === 'QC' && x.vessel === wi.visit) ? 'No quay crane assigned to this vessel' : 'Waiting for ' + type; return false; }
     picked.push(e);
   }
   picked.forEach(e => { e.status = 'BUSY'; e.wi = wi.id; });
@@ -771,6 +793,7 @@ function cycle() {
   S.wis.filter(w => w.status === 'DISPATCHED').forEach(complete);
   // vessel arrivals by ETA (a vessel whose quay is taken waits)
   S.visits.filter(v => v.phase === 'INBOUND' && v.eta <= S.clock).forEach(v => arrive(v));
+  assignCranes();
   // Shabbat: running jobs finish above, but no new job is sent to any machine
   const work = isWorkTime(S.clock);
   if (work !== S.workOn) {
@@ -802,8 +825,13 @@ function cycle() {
 }
 function finishVisits() {
   S.visits.filter(v => v.phase === 'WORKING').forEach(v => {
-    if (!S.wis.some(w => w.visit === v.id && w.status !== 'COMPLETE')) { v.phase = 'COMPLETE'; log('VESSEL', `${v.vessel} (${v.id}) work complete`); }
+    if (S.wis.some(w => w.visit === v.id && w.status !== 'COMPLETE')) return;
+    v.phase = 'COMPLETE';
+    const freed = qcsOf(v);
+    freed.forEach(e => { e.vessel = null; });
+    log('VESSEL', `${v.vessel} (${v.id}) work complete` + (freed.length ? `, ${freed.map(e => e.id).join(' + ')} free for the next vessel` : ''));
   });
+  assignCranes();
 }
 
 // ---------- vessel ----------
@@ -828,12 +856,14 @@ function startWork(v) {
     if (u.category === 'IMPORT' && u.state === 'ON_VESSEL') { newWI('DISCHARGE', u, { visit: v.id }); d++; }
     if (u.category === 'EXPORT' && u.state === 'YARD' && v.plan[u.vslot]?.unit === u.id) { newWI('LOAD', u, { visit: v.id, seq: v.plan[u.vslot].seq }); l++; }
   });
-  v.phase = 'WORKING';
+  v.phase = 'WORKING'; v.started = S.clock;
+  assignCranes();
   log('VESSEL', `${v.vessel}: work started, stowage plan built (${l} slots), ${d} discharge + ${l} load instructions created` + (short ? `, ${short} short-shipped` : ''));
   flash('ok', `${d} discharge and ${l} load work instructions created, following the stowage plan.` + (short ? ` ${short} export(s) did not fit and stay in the yard.` : '') + ' Run cycles to execute them.');
 }
 function depart(v) {
   v.phase = 'DEPARTED'; v.atd = S.clock;
+  qcsOf(v).forEach(e => { e.vessel = null; });
   let rolled = 0;
   Object.values(S.units).forEach(u => {
     if (u.visit !== v.id) return;
@@ -845,6 +875,50 @@ function depart(v) {
     }
   });
   log('VESSEL', `${v.vessel} departed` + (rolled ? `, ${rolled} export(s) rolled (left behind)` : ''));
+}
+
+// ---------- berth schedule and quay crane split (version 6) ----------
+// each visit asks for 1 or 2 quay cranes (v.cranes); a quay crane works only for the vessel it is assigned to (e.vessel)
+const qcsOf = v => S.eq.filter(e => e.type === 'QC' && e.vessel === v.id);
+// crane moves still to do: open vessel jobs once work started, else boxes on board plus exports booked to it
+function visitMoves(v) {
+  if (v.phase === 'WORKING') return S.wis.filter(w => w.visit === v.id && w.status !== 'COMPLETE').length;
+  if (!['INBOUND', 'ARRIVED'].includes(v.phase)) return 0;
+  return Object.values(S.units).filter(u => u.visit === v.id && ((u.category === 'IMPORT' && u.state === 'ON_VESSEL') ||
+    (u.category === 'EXPORT' && ['YARD', 'AT_GATE'].includes(u.state) && !u.short))).length;
+}
+// n working cycles after m: Shabbat passes on the clock but no crane works
+function addWork(m, n) { let x = m; while (n > 0) { if (isWorkTime(x)) n--; x += CYCLE_MIN; } return x; }
+// the time a visit holds (or will hold) its quay: from arrival until it sails. Until it sails the end is an estimate:
+// every crane makes one move per 15-minute cycle, so the stay = moves / cranes cycles of working time
+function berthWindow(v) {
+  const from = v.ata ?? v.eta;
+  if (v.phase === 'DEPARTED') return { from, to: v.atd, est: false };
+  if (v.phase === 'COMPLETE') return { from, to: Math.max(S.clock, from) + CYCLE_MIN, est: true };   // done, holds the quay until it sails
+  const cranes = v.phase === 'WORKING' ? Math.max(1, qcsOf(v).length) : v.cranes;
+  return { from, to: addWork(Math.max(from, S.clock), Math.max(1, Math.ceil(visitMoves(v) / cranes))), est: true };
+}
+// another visit that wants the same quay at an overlapping time
+function berthConflict(v) {
+  if (v.phase === 'DEPARTED') return null;
+  const a = berthWindow(v);
+  return S.visits.find(x => {
+    if (x === v || x.quay !== v.quay || x.phase === 'DEPARTED') return false;
+    const b = berthWindow(x);
+    return a.from < b.to && b.from < a.to;
+  }) || null;
+}
+// fill each working vessel up to the cranes it asked for, earliest arrival first, from cranes no other vessel at berth holds
+function assignCranes() {
+  const free = e => !e.vessel || !['ARRIVED', 'WORKING'].includes(visitById(e.vessel)?.phase);
+  S.visits.filter(v => v.phase === 'WORKING').sort((a, b) => a.ata - b.ata).forEach(v => {
+    let need = v.cranes - qcsOf(v).length;
+    for (const e of S.eq.filter(x => x.type === 'QC' && free(x))) {
+      if (need <= 0) break;
+      e.vessel = v.id; need--;
+      log('ECS', `${e.id} assigned to ${v.vessel} (${v.id})`);
+    }
+  });
 }
 
 // ---------- rendering ----------
@@ -899,8 +973,62 @@ const VIEWS = {
         <label data-tip="חברת הספנות שהאונייה שלה. היא זו שתקבל את החשבונית.">Line <select name="line">${Object.keys(LINES).map(l => `<option value="${l}">${l} - ${LINES[l]}</option>`).join('')}</select></label>
         <label data-tip="בעוד כמה שעות האונייה צפויה להגיע לנמל.">ETA in hours <input name="eta" type="number" min="0" max="240" value="2" style="width:60px"></label>
         <label data-tip="כמה מכולות יבוא יש על האונייה, שיצטרכו לפרוק בנמל.">Import units on board <input name="imports" type="number" min="0" max="20" value="6" style="width:60px"></label>
+        <label data-tip="כמה עגורני רציף האונייה תקבל כשמתחילים לעבוד עליה: 1 או 2. עם 2 העבודה נגמרת בערך פי 2 מהר יותר, אבל אם שתי אוניות עובדות באותו זמן, אין מספיק עגורנים לשתיהן.">Quay cranes <select name="cranes"><option value="1">1</option><option value="2">2</option></select></label>
         <label data-tip="ליד איזה רציף האונייה תעגון. רציף 27 ארוך יותר (800 מ' במציאות), רציף 28 קצר יותר (445 מ'). אם הרציף תפוס, האונייה תחכה.">Quay <select name="quay">${QUAYS.map(q => `<option value="${q.id}">${q.id} (${q.real} m)</option>`).join('')}</select></label>
         <button data-tip="יוצר ביקור אונייה חדש ברשימה.">Create</button></form></fieldset>` + visitTable(S.visits, true);
+  },
+  berth() {
+    const H = 48, PXH = 28, w0 = S.clock - timeOfDay(S.clock), w1 = w0 + H * 60;
+    const x = m => Math.round((Math.min(Math.max(m, w0), w1) - w0) / 60 * PXH);
+    const head = header('Berth Schedule', 'Berth planning: vessel windows on the quay; quay crane split per vessel',
+      'לוח הרציפים מראה מי תופס איזה רציף ומתי. כל פס הוא אונייה: מההגעה שלה (ETA, ואחרי שהגיעה ATA) עד שהיא יוצאת. כל עוד היא לא יצאה, הסוף הוא הערכה: כל עגורן רציף עושה הזזה אחת ברבע שעה, אז אונייה עם 12 הזזות ו-2 עגורנים תתפוס את הרציף 6 רבעי שעה (שעה וחצי) של עבודה. בשבת לא עובדים, אז אונייה שמגיעה בשישי אחר הצהריים נשארת עד מוצאי שבת. ' +
+      'לכל אונייה בוחרים 1 או 2 עגורני רציף. יש רק 2 עגורנים בנמל, אז אם אונייה אחת לוקחת את שניהם, השנייה מחכה. כשאונייה מסיימת, העגורנים שלה עוברים לבד לאונייה הבאה. אם שתי אוניות רוצות את אותו רציף באותו זמן, הפס אדום עם !: אפשר להעביר אונייה שעוד בדרך לרציף השני, או לדחות את ההגעה שלה.');
+    const visible = S.visits.filter(v => { if (v.phase === 'DEPARTED' && v.atd < w0) return false; const b = berthWindow(v); return b.to > w0 && b.from < w1; });
+    let scale = '';
+    for (let d = 0; d < H / 24; d++) scale += `<div class="bday" style="left:${d * 24 * PXH}px;width:${24 * PXH}px" data-tip="היום בלוח: ${fmt(w0 + d * 1440).slice(0, 10)}. כל יום הוא 24 משבצות של שעה.">${fmt(w0 + d * 1440).slice(0, 10)}</div>`;
+    for (let h = 6; h < H; h += 6) scale += `<div class="btick" style="left:${h * PXH}px" data-tip="השעה ביום. קו אפור דק בציר = כל 6 שעות.">${String(h % 24).padStart(2, '0')}:00</div>`;
+    // Shabbat bands: runs of non-working time inside the window
+    let shab = '';
+    for (let m = w0; m < w1; m += CYCLE_MIN) if (!isWorkTime(m) && (m === w0 || isWorkTime(m - CYCLE_MIN))) {
+      let e = m; while (e < w1 && !isWorkTime(e)) e += CYCLE_MIN;
+      shab += `<div class="bshab" style="left:${x(m)}px;width:${x(e) - x(m)}px" data-tip="שבת: משישי 15:00 עד מוצאי שבת 20:00 אף עגורן לא עובד. אונייה שעומדת ברציף בזמן הזה פשוט מחכה, והחלון שלה מתארך."></div>`;
+    }
+    const now = S.clock < w1 ? `<div class="bnow" style="left:${x(S.clock)}px" data-tip="הקו האדום = עכשיו, לפי שעון הנמל. מה שמשמאל כבר קרה, מה שמימין הוא תכנון."></div>` : '';
+    const tracks = QUAYS.map(q => {
+      const bars = visible.filter(v => v.quay === q.id).sort((a, b) => berthWindow(a).from - berthWindow(b).from).map((v, i, list) => {
+        const b = berthWindow(v), conf = berthConflict(v), cr = v.phase === 'WORKING' ? qcsOf(v).length : v.cranes;
+        // a vessel that overlaps an earlier one on this quay is drawn on the second lane, so both are visible
+        const lane = list.slice(0, i).some(o => { const ob = berthWindow(o); return b.from < ob.to && ob.from < b.to; }) ? 1 : 0;
+        const tip = `${v.vessel} (${v.id}), רציף ${q.id}: מ-${fmt(b.from)} עד ${fmt(b.to)}${b.est ? ' (סוף משוער)' : ''}. שלב: ${v.phase}. ` +
+          (['INBOUND', 'ARRIVED', 'WORKING'].includes(v.phase) ? `נשארו ${visitMoves(v)} הזזות, עם ${cr} עגורני רציף. ` : '') +
+          (conf ? `התנגשות: ${conf.vessel} רוצה את אותו רציף באותו זמן. אונייה אחת תחכה בים עד שהשנייה תצא.` : '');
+        return `<div class="bbar ph-${v.phase}${conf ? ' bconf' : ''}" style="left:${x(b.from)}px;width:${Math.max(6, x(b.to) - x(b.from))}px;top:${3 + lane * 21}px" data-tip="${esc(tip)}">${conf ? '! ' : ''}${esc(v.vessel)}</div>`;
+      }).join('');
+      return `<div class="blbl">Berth ${q.id}</div><div class="btrack" style="width:${H * PXH}px">${shab}${bars}${now}</div>`;
+    }).join('');
+    const open = S.visits.filter(v => v.phase !== 'DEPARTED');
+    const rows = open.map(v => {
+      const b = berthWindow(v), conf = berthConflict(v);
+      let act = [1, 2].map(n => `<button class="sm ${v.cranes === n ? 'on' : ''}" data-act="cranes" data-id="${v.id}:${n}" ${v.phase === 'COMPLETE' ? 'disabled' : ''}>${n} QC${n > 1 ? 's' : ''}</button>`).join(' ');
+      if (v.phase === 'INBOUND') {
+        const other = QUAYS.find(q => q.id !== v.quay).id;
+        act += ` <button class="sm" data-act="moveQuay" data-id="${v.id}">Move to quay ${other}</button> <button class="sm" data-act="etaShift" data-id="${v.id}:-60">ETA -1h</button> <button class="sm" data-act="etaShift" data-id="${v.id}:60">ETA +1h</button>`;
+      }
+      return `<tr><td>${v.id}</td><td>${esc(v.vessel)}</td><td>${v.quay}</td><td>${tag('ph-' + v.phase, v.phase)}${v.wait ? ` <span class="note">${esc(v.wait)}</span>` : ''}</td><td>${fmt(b.from)}</td><td>${fmt(b.to)}${b.est ? ' <span class="note">(est.)</span>' : ''}</td>
+        <td class="num">${visitMoves(v)}</td><td>${qcsOf(v).length} / ${v.cranes}</td><td>${conf ? tag('st-HOLD', 'CONFLICT') + ' <span class="note">with ' + esc(conf.vessel) + '</span>' : '-'}</td><td>${act}</td></tr>`;
+    }).join('');
+    const atBerth = S.visits.filter(v => ['ARRIVED', 'WORKING'].includes(v.phase));
+    const qrows = S.eq.filter(e => e.type === 'QC').map(e => {
+      const moves = atBerth.filter(v => v.id !== e.vessel).map(v => `<button class="sm" data-act="qcAssign" data-id="${e.id}:${v.id}">To ${v.id}</button>`).join(' ');
+      return `<tr><td class="mono"><span class="eqname">${e.id}</span></td><td>${e.vessel ? esc(visitById(e.vessel)?.vessel || '') + ' ' + e.vessel : 'free'}</td><td>${eqStatus(e)}</td><td>${e.wi || ''}</td><td>${moves || '<span class="note">no other vessel at berth</span>'}</td></tr>`;
+    }).join('');
+    return head + `<fieldset><legend>Berth plan &ndash; 2 days from ${fmt(w0).slice(0, 10)}</legend><div class="baywrap"><div class="btl">
+        <div></div><div class="bscale" style="width:${H * PXH}px">${scale}</div>${tracks}</div></div>
+      <div class="legend"><span><i class="ph-INBOUND" style="border-style:dashed"></i>Vessel inbound (planned)</span><span><i class="ph-WORKING"></i>Vessel at berth</span><span><i class="ph-COMPLETE"></i>Work complete, still at berth</span>
+        <span><i class="lg-conf"></i>! Conflict on the same quay</span><span><i class="lg-shab"></i>Shabbat, no work</span><span><i class="lg-now"></i>Now</span></div></fieldset>
+      <fieldset><legend>Vessel windows</legend>${open.length ? `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Berth</th><th>Phase</th><th>Berth from</th><th>Berth until</th><th class="num">Moves left</th><th>QCs</th><th>Conflict</th><th>Actions</th></tr>${rows}</table>` : '<p class="note">No vessel visits.</p>'}</fieldset>
+      <fieldset><legend>Quay crane split</legend><table class="grid"><tr><th>Quay crane</th><th>Assigned to</th><th>Status</th><th>Current WI</th><th>Move to</th></tr>${qrows}</table>
+        <p class="note">A quay crane works only for the vessel it is assigned to. When a vessel finishes, its cranes go to the next working vessel.</p></fieldset>`;
   },
   stowage() {
     const open = S.visits.filter(v => v.phase !== 'DEPARTED');
@@ -1136,8 +1264,8 @@ const VIEWS = {
   equipment() {
     return header('Equipment (ECS)', 'Equipment Control System; QC, AGV/AHT Manager, ASC Manager',
       'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן, כמו בנמל הדרום מוקטן פי 4: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ו-2 עגורני חצר אוטומטיים (ASC) בכל בלוק, 8 בסך הכל. משימה בבלוק לוקחת את העגורן הפנוי מבין השניים. בשבת מכונה פנויה מסומנת SHABBAT ולא מקבלת עבודה.') +
-      `<table class="grid"><tr><th>Equipment</th><th>Kind</th><th>Status</th><th>Current WI</th><th class="num">Moves done</th></tr>` +
-      S.eq.map(e => `<tr><td class="mono"><span class="eqname">${e.id}</span></td><td>${e.desc}</td><td>${eqStatus(e)}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
+      `<table class="grid"><tr><th>Equipment</th><th>Kind</th><th>Status</th><th>Assigned to</th><th>Current WI</th><th class="num">Moves done</th></tr>` +
+      S.eq.map(e => `<tr><td class="mono"><span class="eqname">${e.id}</span></td><td>${e.desc}</td><td>${eqStatus(e)}</td><td>${e.type === 'QC' ? (e.vessel ? esc(visitById(e.vessel)?.vessel || e.vessel) : 'free') : ''}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
   },
   billing() {
     const t = S.tariff;
@@ -1169,7 +1297,8 @@ const VIEWS = {
   },
   mapping() {
     const rows = [
-      ['Vessel Visits', 'ביקור אונייה עם 5 שלבים ורציף. Start work בונה תוכנית העמסה ויוצר הוראות פריקה והעמסה.', 'N4 מנהל ביקורי אוניות ופעולות אונייה (Vessel).', 'אין תכנון רציף עם חלונות זמן (גרסה 6).'],
+      ['Vessel Visits', 'ביקור אונייה עם 5 שלבים ורציף. Start work בונה תוכנית העמסה ויוצר הוראות פריקה והעמסה.', 'N4 מנהל ביקורי אוניות ופעולות אונייה (Vessel).', '-'],
+      ['Berth Schedule', 'ציר זמן לכל רציף: מתי כל אונייה מגיעה ועד מתי תתפוס את הרציף (הערכה לפי הזזות ועגורנים, בלי שבת). התנגשות מסומנת באדום. לכל אונייה 1 או 2 עגורני רציף, ועגורן עובד רק על האונייה שלו.', 'N4 כולל תכנון רציף (Berth planning): חלון לכל ביקור אונייה על הרציף, ומספר עגורני רציף (crane split) לכל אונייה.', 'אין מיקום לאורך הרציף (אונייה אחת לכל רציף), אין גאות, אין זמן הפלגה, ואין חלונות קבועים לפי חוזה עם חברת הספנות.'],
       ['Stowage Plan', 'תוכנית מקומות באונייה שנבנית אוטומטית: נמל אחרון למטה, כבדה מתחת לקלה, בלי לערבב 20 ו-40 רגל. ההעמסה הולכת לפי התוכנית. בנוסף לוח תרגול: אתה משבץ, המערכת חוסמת מה שבלתי אפשרי, מסמנת טעויות תכנון, ומשווה לתוכנית של המחשב.', 'מודול Vessel Autostow של N4 מתכנן העמסה לפי חוקים, ומתכנן האונייה (Vessel Planner) בודק, מזיז מכולות ביד ומתקן.', 'אונייה אחת לכולם, 3 bays בלבד. אין יציבות, קשירה, קירור או מטען מסוכן. התרגול לא נכנס להעמסה האמיתית.'],
       ['Unit Inspector', 'מכולה (Unit) נפרדת מהביקורים שלה (UFV). לכל ביקור 7 שלבי חיים עם שעה, ההזזות והחיובים שלו. מכולה ריקה שיצאה יכולה לחזור בשער עם אותו מספר וביקור חדש.', 'N4 מפריד בין Unit (זהות קבועה) ל-Unit Facility Visit (ביקור במסוף), ומשתמש ב-transit state: Advised, Inbound, EC/In, Yard, EC/Out, Loaded, Departed.', 'בפנים המכולה שומרת את הביקור הנוכחי, ולא טבלה נפרדת. אין נזקים, אטמים או שדות מותאמים לכל ביקור.'],
       ['Yard View + Unit Inventory', '4 בלוקים, 12 ערימות בכל אחד, עד 4 קומות. כל מכולה עם מיקום מדויק.', 'N4 מנהל את מלאי החצר ואת מיקום כל מכולה (Yard).', 'חצר קטנה מאוד. אין משקל/גובה ערימה מורכבים.'],
@@ -1201,7 +1330,7 @@ function layoutPanel() {
     return `<div class="quay" style="width:${Math.round(q.len * PX)}px"><b>Quay ${q.id}</b> <span class="note">${q.real} m real, ${q.len} m here</span>
       <div>${v ? esc(v.vessel) + ' ' + tag('ph-' + v.phase, v.phase) : '<span class="note">free</span>'}${waiting ? ` <span class="note">(${waiting} waiting)</span>` : ''}</div></div>`;
   }).join('');
-  const qcs = S.eq.filter(e => e.type === 'QC').map(e => `<span class="eqname">${e.id}</span> ${eqStatus(e)}`).join(' ');
+  const qcs = S.eq.filter(e => e.type === 'QC').map(e => `<span class="eqname">${e.id}</span> ${eqStatus(e)}${e.vessel ? ' &rarr; ' + e.vessel : ''}`).join(' ');
   const agvs = S.eq.filter(e => e.type === 'AGV').map(e => `<span class="eqname">${e.id}</span> ${eqStatus(e)}`).join(' ');
   const blocks = BLOCKS.map(b => {
     const used = Object.keys(S.stacks).filter(k => k[0] === b.id).reduce((n, k) => n + S.stacks[k].length, 0);
@@ -1216,7 +1345,7 @@ function layoutPanel() {
     <p class="note">Real port: 8 quay cranes and 30 automated stacking cranes. Here: 2 and 8.</p></fieldset>`;
 }
 function visitTable(list, actions) {
-  return `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Line</th><th>Quay</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">To discharge</th><th class="num">To load</th><th>Plan</th>${actions ? '<th>Actions</th>' : ''}</tr>` +
+  return `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Line</th><th>Quay</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">To discharge</th><th class="num">To load</th><th>QCs</th><th>Plan</th>${actions ? '<th>Actions</th>' : ''}</tr>` +
     list.map(v => {
       const us = Object.values(S.units).filter(u => u.visit === v.id);
       const disch = us.filter(u => u.category === 'IMPORT' && u.state === 'ON_VESSEL').length;
@@ -1234,7 +1363,7 @@ function visitTable(list, actions) {
         planTxt = `${ks.length} planned, ${ks.filter(k => v.onboard[k] === v.plan[k].unit).length} loaded` + (w ? `, ${w} warning${w > 1 ? 's' : ''}` : '');
       }
       return `<tr><td>${v.id}</td><td>${esc(v.vessel)}</td><td>${v.line}</td><td>${v.quay}</td><td>${tag('ph-' + v.phase, v.phase)}${v.wait ? ` <span class="note">${esc(v.wait)}</span>` : ''}</td><td>${fmt(v.eta)}</td>
-        <td>${v.ata != null ? fmt(v.ata) : ''}</td><td>${v.atd != null ? fmt(v.atd) : ''}</td><td class="num">${disch}</td><td class="num">${load}</td><td>${planTxt}</td>${actions ? `<td>${act}</td>` : ''}</tr>`;
+        <td>${v.ata != null ? fmt(v.ata) : ''}</td><td>${v.atd != null ? fmt(v.atd) : ''}</td><td class="num">${disch}</td><td class="num">${load}</td><td>${qcsOf(v).length} / ${v.cranes}</td><td>${planTxt}</td>${actions ? `<td>${act}</td>` : ''}</tr>`;
     }).join('') + '</table>';
 }
 function unitSummary(units) {
@@ -1262,6 +1391,37 @@ const ACTIONS = {
   reset: () => { if (autoTimer) ACTIONS.auto(); fresh(); UI.stack = null; UI.unit = null; flash('ok', 'Demo terminal reset.'); },
   arrive: id => { const v = visitById(id); if (!arrive(v)) flash('err', `${v.wait}. It can berth when that vessel departs.`); },
   start: id => startWork(visitById(id)),
+  cranes: id => {
+    const [vid, n] = id.split(':'), v = visitById(vid);
+    v.cranes = Number(n) === 2 ? 2 : 1;
+    // fewer cranes on a working vessel: the idle ones are handed back first
+    if (v.phase === 'WORKING') qcsOf(v).sort((a, b) => (a.status === 'IDLE' ? 0 : 1) - (b.status === 'IDLE' ? 0 : 1)).slice(0, Math.max(0, qcsOf(v).length - v.cranes)).forEach(e => { e.vessel = null; });
+    assignCranes();
+    log('VESSEL', `${v.vessel} (${v.id}) asks for ${v.cranes} quay crane${v.cranes > 1 ? 's' : ''}`);
+    flash('ok', `${v.vessel} now asks for ${v.cranes} quay crane${v.cranes > 1 ? 's' : ''}. Estimated to free quay ${v.quay} at ${fmt(berthWindow(v).to)}.`);
+  },
+  moveQuay: id => {
+    const v = visitById(id);
+    if (v.phase !== 'INBOUND') return;
+    v.quay = QUAYS.find(q => q.id !== v.quay).id; v.wait = null;
+    log('VESSEL', `${v.vessel} (${v.id}) moved to quay ${v.quay}`);
+    const other = berthConflict(v);
+    flash(other ? 'err' : 'ok', `${v.vessel} now plans quay ${v.quay}.` + (other ? ` That quay is also booked by ${other.vessel} at that time.` : ' No conflict there.'));
+  },
+  etaShift: id => {
+    const [vid, d] = id.split(':'), v = visitById(vid);
+    if (v.phase !== 'INBOUND') return;
+    v.eta = Math.max(S.clock, v.eta + Number(d));
+    log('VESSEL', `${v.vessel} (${v.id}) ETA changed to ${fmt(v.eta)}`);
+    const other = berthConflict(v);
+    flash(other ? 'err' : 'ok', `${v.vessel} ETA is now ${fmt(v.eta)}.` + (other ? ` Still overlaps ${other.vessel} on quay ${v.quay}.` : ' No conflict on its quay.'));
+  },
+  qcAssign: id => {
+    const [eid, vid] = id.split(':'), e = S.eq.find(x => x.id === eid), v = visitById(vid);
+    e.vessel = v.id;
+    log('ECS', `${e.id} moved to ${v.vessel} (${v.id}) by the planner`);
+    flash('ok', `${e.id} now works for ${v.vessel}` + (e.status === 'BUSY' ? ', after it finishes its current move.' : '.'));
+  },
   depart: id => depart(visitById(id)),
   stack: id => { UI.stack = UI.stack === id ? null : id; },
   unitYard: id => { UI.page = 'yard'; UI.stack = S.units[id].pos; },
@@ -1358,9 +1518,11 @@ const FORMS = {
   },
   visit: f => {
     const v = addVisit(f.vessel.trim() || 'MV Unnamed', f.line, Math.round(Number(f.eta) * 60), Math.min(20, Math.max(0, Number(f.imports) | 0)),
-      QUAYS.some(q => q.id === f.quay) ? f.quay : '27');
+      QUAYS.some(q => q.id === f.quay) ? f.quay : '27', f.cranes === '2' ? 2 : 1);
     log('VESSEL', `Visit ${v.id} ${v.vessel} created for quay ${v.quay}, ETA ${fmt(v.eta)}`);
-    flash('ok', `Visit ${v.id} created.`);
+    const other = berthConflict(v);
+    if (other) flash('err', `Visit ${v.id} created, but quay ${v.quay} is booked by ${other.vessel} at that time, so ${v.vessel} would wait at anchor. Open Berth Schedule to move it to the other quay or change its ETA.`);
+    else flash('ok', `Visit ${v.id} created. Its window is on the Berth Schedule.`);
   },
   gatein: f => {
     if (!isGateOpen(S.clock)) return gateClosed('RECEIVE ' + f.kind, null);
@@ -1420,7 +1582,7 @@ function tipText(el) {
   return infoTip(el);
 }
 // every heading, column, status tag and screen part explains itself: looked up by its text (exact, else longest prefix)
-const INFO_SEL = 'th, .tag, legend, .kpi, .legend span, h3, .lblock, .quay, .sea, .rail, .lane > span, .eqname, .pstatus, .pick, .tstep';
+const INFO_SEL = 'th, .tag, legend, .kpi, .legend span, h3, .lblock, .quay, .sea, .rail, .lane > span, .eqname, .pstatus, .pick, .tstep, .blbl, .bbar, .bday, .btick, .bshab, .bnow';
 function infoTip(el) {
   const txt = (el.matches('.kpi') ? el.querySelector('span').textContent : el.textContent).trim();
   const dict = INFO[el.matches('th') ? 'th' : el.matches('.tag') ? 'tag' : 'part'];
@@ -1482,6 +1644,15 @@ const INFO = {
     'In': 'מתי הביקור התחיל.',
     'Out': 'מתי הביקור נגמר (המכולה יצאה). - = עוד בנמל.',
     'Last state': 'השלב האחרון שהביקור הגיע אליו.',
+    'Berth': 'הרציף שהאונייה מתוכננת לעגון לידו: 27 (ארוך) או 28 (קצר).',
+    'Berth from': 'מתי האונייה תופסת את הרציף: ה-ETA (מתי אמורה להגיע), ואחרי שהגיעה ה-ATA (מתי הגיעה בפועל).',
+    'Berth until': 'עד מתי האונייה תתפוס את הרציף. (est.) = הערכה: ההזזות שנשארו חלקי מספר עגורני הרציף, רבע שעה להזזה, בלי שבת.',
+    'Moves left': 'כמה הזזות של עגורן רציף נשארו לאונייה: מכולות לפרוק ומכולות להעמיס.',
+    'QCs': 'עגורני רציף: כמה עובדים עכשיו על האונייה / כמה היא ביקשה. 0 / 1 = היא מחכה שעגורן יתפנה מאונייה אחרת.',
+    'Conflict': 'האם אונייה אחרת רוצה את אותו רציף באותו זמן. CONFLICT = אחת מהן תחכה בים.',
+    'Quay crane': 'עגורן הרציף (QC): העגורן הגדול שמוריד ומעלה מכולות מהאונייה.',
+    'Assigned to': 'לאיזו אונייה העגורן שייך עכשיו. עגורן עובד רק על האונייה שלו. free = פנוי ומחכה לאונייה הבאה.',
+    'Move to': 'כפתורים להעביר את העגורן לאונייה אחרת שליד הרציף.',
     'Who planned': 'מי בנה את התוכנית: אתה (התרגול) או המחשב (התוכנית האוטומטית), לאותן מכולות.',
     'Boxes': 'כמה מכולות שובצו באונייה.',
     'Port-order breaks': 'כמה פעמים מכולה לנמל רחוק עומדת ישר על מכולה לנמל קרוב יותר.',
@@ -1515,6 +1686,7 @@ const INFO = {
     'DISPATCHED': 'ההוראה נשלחה למכונות, והן מבצעות אותה עכשיו.',
     'REJECTED': 'המשאית נדחתה בשער. הסיבה כתובה בעמודה שלידה.',
     'HOLD': 'המכולה בעיכוב: היא לא יכולה לצאת מהשער.',
+    'CONFLICT': 'התנגשות: שתי אוניות רוצות את אותו רציף באותו זמן. אחת תחכה בים עד שהשנייה תצא. פתרון: להעביר לרציף השני או לדחות את ההגעה.',
     'CUSTOMS': 'עיכוב מכס: המכולה לא יכולה לצאת מהשער עד שהמכס משחרר אותה (כפתור Release).',
     'DRAFT': 'טיוטה: החשבונית עוד לא נשלחה ללקוח, ואפשר לנעול אותה (Finalize).',
     'FINAL': 'החשבונית נעולה ונשלחה ללקוח. מחכה לתשלום.',
@@ -1583,6 +1755,17 @@ const INFO = {
     'EC/OUT': 'EC/OUT: המכולה ביציאה: יש לה הוראת עבודה להעמסה על אונייה או למסירה למשאית.',
     'LOADED': 'LOADED: המכולה הועמסה על האונייה, והאונייה עוד לא יצאה.',
     'DEPARTED': 'DEPARTED: המכולה יצאה מהנמל, באונייה או במשאית. הביקור נגמר.',
+    'Berth plan': 'ציר הזמן של הרציפים ליומיים, מהיום בחצות. שורה לכל רציף, פס לכל אונייה. עמידה על פס מראה את הפרטים.',
+    'Berth 27': 'רציף 27, הארוך (800 מ\' במציאות). כל פס בשורה הזאת הוא אונייה שתופסת את הרציף בזמן הזה.',
+    'Berth 28': 'רציף 28, הקצר (445 מ\' במציאות). כל פס בשורה הזאת הוא אונייה שתופסת את הרציף בזמן הזה.',
+    'Vessel windows': 'כל אונייה שעוד לא יצאה: רציף, חלון זמן, כמה הזזות נשארו, כמה עגורנים יש לה, והאם יש התנגשות. כאן גם משנים עגורנים, רציף ושעת הגעה.',
+    'Quay crane split': 'חלוקת עגורני הרציף בין האוניות: איזה עגורן עובד על איזו אונייה, ואפשרות להעביר אותו.',
+    'Vessel inbound (planned)': 'פס מקווקו = האונייה עוד בדרך. החלון הוא תכנון.',
+    'Vessel at berth': 'פס כחול = האונייה ליד הרציף ועובדים עליה (או מחכה להתחלת עבודה).',
+    'Work complete, still at berth': 'פס ירוק = העבודה נגמרה, אבל האונייה עוד תופסת את הרציף עד שלוחצים Depart.',
+    '! Conflict on the same quay': 'מסגרת אדומה עם ! = שתי אוניות רוצות את אותו רציף באותו זמן.',
+    'Shabbat, no work': 'פסים סגולים = שבת. אף עגורן לא עובד, אז אונייה שעומדת ברציף מחכה.',
+    'Now': 'הקו האדום = השעה עכשיו בשעון הנמל.',
     'Practice:': 'הציון שלך בתרגול: כמה מכולות שיבצת מתוך כמה, כמה חוקים שברת (נמל ומשקל), וכמה הזזות מיותרות התוכנית תגרום בנמלים הבאים. מטרה: 0 שבירות ו-0 הזזות מיותרות.',
     'Picked:': 'המכולה שבחרת עכשיו לשיבוץ: מספר, גודל, נמל יעד ומשקל. לחץ על מקום ירוק כדי לשים אותה, או Cancel.',
     'Waiting to be placed': 'מכולות הייצוא של האונייה שעוד מחכות בחצר ולא שובצו בלוח התרגול. לחץ על אחת כדי לבחור אותה.',
