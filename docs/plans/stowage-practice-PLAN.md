@@ -30,3 +30,6 @@ Refused move: Hebrew reason, nothing changes. Practice on a working vessel: read
 
 ## 6. Risks / non-goals
 Risk: the stowage screen gets crowded on a phone; mitigated by the "Picked" line and list below the drawing. Non-goals: drag and drop, saving attempts, scores across sessions (version 19).
+
+## Built (2026-10-26)
+- Change review: REPAIR. Fixed: the comparison after Start work showed the computer with 0 boxes (it now reads the real plan once one exists); remove / clear / fill now refuse when practice is closed; the test now proves the real plan is identical with and without practice, and checks the comparison after work started. Smoke passes.

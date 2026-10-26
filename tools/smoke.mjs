@@ -25,6 +25,7 @@ await page.click('[data-act="reset"]');
 
 const check = (cond, msg) => { if (!cond) { errors.push('CHECK FAILED: ' + msg); } };
 const state = () => page.evaluate(() => JSON.parse(JSON.stringify(window.TOS.state)));
+const CUR_VER = await page.evaluate(() => STATE_VER);   // saved-state version of this build
 
 // ISO 6346 check digit: CSQU305438 -> 3 (published example)
 check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO 6346 check digit');
@@ -157,7 +158,7 @@ check(rules.fmt.startsWith('Thu 22-Oct 06:00'), 'clock shows weekday: ' + rules.
 // equipment: 2 QC, 4 AGV, 8 ASC (2 per block)
 await page.click('[data-act="reset"]');
 s = await state();
-check(s.ver === 3, 'fresh state has version 3');
+check(s.ver === CUR_VER, 'fresh state has the current version');
 check(s.eq.filter(e => e.type === 'QC').length === 2 && s.eq.filter(e => e.type === 'AGV').length === 4 && s.eq.filter(e => e.type.startsWith('ASC-')).length === 8, 'equipment 2 QC / 4 AGV / 8 ASC');
 check(['A', 'B', 'C', 'D'].every(b => s.eq.filter(e => e.type === 'ASC-' + b).length === 2), 'two ASCs per block');
 await page.click('nav a[data-id="overview"]');
@@ -224,7 +225,7 @@ const v1s = JSON.parse(v1);
 await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), v1);
 await page.reload();
 s = await state();
-check(s.ver === 3 && s.clock === v1s.clock && Object.keys(s.units).length === Object.keys(v1s.units).length, 'v1 save upgraded, clock and units kept');
+check(s.ver === CUR_VER && s.clock === v1s.clock && Object.keys(s.units).length === Object.keys(v1s.units).length, 'v1 save upgraded, clock and units kept');
 check(s.eq.filter(e => e.type.startsWith('ASC-')).length === 8 && !s.eq.some(e => /^ASC-[A-D]$/.test(e.id)), 'v1 save has 8 ASCs with new ids');
 check(s.wis.every(w => w.eq.every(id => s.eq.some(e => e.id === id))), 'every job points at existing equipment');
 check(s.visits.every(v => v.quay), 'every visit has a quay');
@@ -237,7 +238,7 @@ for (const bad of ['not json', JSON.stringify({ ver: 99, units: {} }), JSON.stri
   await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), bad);
   await page.reload();
   s = await state();
-  check(s.ver === 3 && (await page.textContent('.flash')).includes('could not be read'), 'bad save starts fresh with a message: ' + bad.slice(0, 20));
+  check(s.ver === CUR_VER && (await page.textContent('.flash')).includes('could not be read'), 'bad save starts fresh with a message: ' + bad.slice(0, 20));
 }
 await page.click('[data-act="reset"]');
 
@@ -247,7 +248,7 @@ const v2raw = readFileSync(resolve('tools/fixtures/save-v2.json'), 'utf8');
 await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), v2raw);
 await page.reload();
 const v2run = await page.evaluate(() => {
-  const ok = S.ver === 3 && S.visits.every(v => 'plan' in v && v.onboard) && Object.values(S.units).filter(u => u.category === 'EXPORT').every(u => u.pod >= 1 && u.pod <= 3);
+  const ok = S.ver === STATE_VER && S.visits.every(v => 'plan' in v && v.onboard) && Object.values(S.units).filter(u => u.category === 'EXPORT').every(u => u.pod >= 1 && u.pod <= 3);
   const working = S.visits.find(v => v.phase === 'WORKING');
   let n = 0; while (S.wis.some(w => w.status !== 'COMPLETE') && n++ < 400) cycle();
   return { ok, unplanned: working && working.plan === null, open: S.wis.filter(w => w.status !== 'COMPLETE').length };
@@ -342,6 +343,87 @@ await page.click('[data-act="stowMode"][data-id="weight"]');
 check((await page.textContent('#content')).includes('Darker = heavier'), 'weight colour mode');
 await page.click('nav a[data-id="mapping"]');
 check((await page.textContent('#content')).includes('Autostow'), 'mapping page mentions Autostow');
+await page.click('[data-act="reset"]');
+
+// ---------- version 4: stowage practice ----------
+// the rules, called directly on the practice board of MV Harbor Lesson (V002, still INBOUND)
+const prac = await page.evaluate(() => {
+  const v = S.visits[1]; v.practice = {};
+  const w = practiceWaiting(v), u40 = w.find(u => sizeOf(u) === '40'), u20 = w.filter(u => sizeOf(u) === '20');
+  const r = { waiting: w.length, exports: yardExports(v).length };
+  r.size = !!canPlace(v, u40, '01-01-02');                       // 40' into a 20' bay
+  r.float = !!canPlace(v, u20[0], '01-01-04');                   // nothing under it (an import on board does not count)
+  u20[0].pod = 1; u20[1].pod = 3;                                // a near-port box under a far-port box
+  r.okBottom = canPlace(v, u20[0], '01-01-02') === null;
+  v.practice['01-01-02'] = { unit: u20[0].id, by: 'me' };
+  r.okTop = canPlace(v, u20[1], '01-01-04') === null;            // allowed (soft rule only)
+  v.practice['01-01-04'] = { unit: u20[1].id, by: 'me' };
+  r.taken = !!canPlace(v, u20[2], '01-01-04');
+  const get = k => practiceAt(v, k);
+  r.brk = boardBreak(v, get, '01-01-04')?.kind;
+  r.score = boardScore(v, get);
+  r.removeUnder = !!canRemove(v, '01-01-02');                    // a box sits on top
+  r.removeTop = canRemove(v, '01-01-04') === null;
+  delete v.practice['01-01-04'];
+  r.afterRemove = boardScore(v, get);
+  // computer fills the rest around the learner's box: nothing floats
+  r.fill = practiceFill(v);
+  r.floating = Object.keys(v.practice).filter(k => slotBelow(k) && !v.practice[slotBelow(k)]).length;
+  r.allPlaced = practiceWaiting(v).length === 0;
+  r.auto = boardScore(v, autoBoard(v));
+  v.practice = null;
+  return r;
+});
+check(prac.waiting === prac.exports && prac.waiting >= 10, 'waiting list = every yard export of the vessel: ' + prac.waiting);
+check(prac.size && prac.float && prac.taken, 'wrong size, floating and taken slots are refused: ' + JSON.stringify([prac.size, prac.float, prac.taken]));
+check(prac.okBottom && prac.okTop && prac.brk === 'port', 'far-port box on a near-port box is allowed with a port-order warning');
+check(prac.score.port === 1 && prac.score.extra === 1 && prac.score.placed === 2, 'score counts the break and the extra move: ' + JSON.stringify(prac.score));
+check(prac.removeUnder && prac.removeTop, 'a box with a box on top cannot be removed, the top one can');
+check(prac.afterRemove.port === 0 && prac.afterRemove.extra === 0, 'removing the top box clears its warning');
+check(prac.floating === 0 && prac.allPlaced, 'the computer fills the rest with nothing floating: ' + JSON.stringify(prac.fill));
+check(prac.auto.port === 0 && prac.auto.weight === 0 && prac.auto.extra === 0, 'the automatic plan scores 0 breaks and 0 extra moves');
+
+// the same flow by clicks: open practice, pick a 40' box (jumps to bay 06), refused and allowed clicks, compare
+await page.click('[data-act="reset"]');
+await page.click('nav a[data-id="stowage"]');
+await page.click('[data-act="stowVisit"][data-id="V002"]');
+await page.click('[data-act="pstart"]');
+check((await page.textContent('#content')).includes('Waiting to be placed (10)'), 'practice shows the waiting list');
+const pick40 = await page.$$eval('button[data-act="ppick"]', bs => bs.find(b => b.textContent.includes("40'"))?.dataset.id);
+await page.click(`[data-act="ppick"][data-id="${pick40}"]`);
+check((await page.textContent('.pick')).includes(pick40) && (await page.$eval('[data-act="bay"].on', b => b.dataset.id)) === '06', 'picking a 40\' box shows it and opens bay 06');
+noTip = await auditTips('practice');
+check(noTip.length === 0, 'tooltips missing in practice:\n  ' + noTip.join('\n  '));
+await page.click('nav a[data-id="stowage"]');
+await page.click('button.slot.no');
+check((await page.textContent('.flash')).startsWith('Not allowed:') && /[֐-׿]/.test(await page.textContent('.flash')) && (await page.getAttribute('.flash', 'role')) === 'alert', 'refused click explains in Hebrew and is announced');
+await page.click('button.slot.ok');
+check(/Placed/.test(await page.textContent('.flash')) && (await page.textContent('.pstatus')).includes('placed 1 / 10'), 'allowed click places the box and updates the score');
+await page.click('[data-act="pfill"]');
+await page.click('[data-act="pcompare"]');
+check((await page.textContent('#content')).includes('Who planned') && (await page.textContent('.pstatus')).includes('placed 10 / 10'), 'computer fills the rest and the comparison shows');
+// practice never changes the real loading: start work, the automatic plan loads, practice is read-only
+const real = await page.evaluate(() => {
+  const v = S.visits[1]; arrive(v); startWork(v);
+  let n = 0; while (S.wis.some(w => w.status !== 'COMPLETE') && n++ < 400) cycle();
+  const planMap = JSON.stringify(Object.keys(v.plan).sort().map(k => k + v.plan[k].unit + v.plan[k].seq));
+  return { phase: v.phase, practiceKept: Object.keys(v.practice).length, breaks: Object.keys(v.plan).filter(k => ruleBreak(v, k)).length, planMap,
+    cmp: boardScore(v, autoBoard(v)).placed };
+});
+check(real.phase === 'COMPLETE' && real.practiceKept === 10 && real.breaks === 0, 'real loading uses the automatic plan and completes, practice kept: ' + JSON.stringify({ ...real, planMap: undefined }));
+check(real.cmp === 10, 'comparison after work started still shows the computer plan, got ' + real.cmp);
+// the same day without any practice builds exactly the same real plan
+await page.click('[data-act="reset"]');
+const noPractice = await page.evaluate(() => { const v = S.visits[1]; arrive(v); startWork(v); return JSON.stringify(Object.keys(v.plan).sort().map(k => k + v.plan[k].unit + v.plan[k].seq)); });
+check(noPractice === real.planMap, 'practice does not change the real plan');
+await page.evaluate(() => { fresh(); const v = S.visits[1]; v.practice = {}; practiceFill(v); arrive(v); startWork(v); UI.page = 'stowage'; UI.stowVisit = v.id; UI.view = 'practice'; render(); });
+check((await page.textContent('#content')).includes('Read-only') && !(await page.$('[data-act="pfill"]')), 'practice is read-only once work started');
+
+// a version 3 save loads and reaches the current version
+await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), readFileSync(resolve('tools/fixtures/save-v3.json'), 'utf8'));
+await page.reload();
+s = await state();
+check(s.ver === CUR_VER && !(await page.$('.flash.err')), 'v3 save loads at the current version');
 await page.click('[data-act="reset"]');
 
 // phone width: no horizontal scroll on the page itself
