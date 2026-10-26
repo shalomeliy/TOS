@@ -308,11 +308,13 @@ const slotKey = (bay, row, tier) => `${bay}-${String(row).padStart(2, '0')}-${ti
 const slotParts = k => { const [bay, row, tier] = k.split('-'); return { bay, row: Number(row), tier }; };
 const slotStep = (k, d) => { const p = slotParts(k), t = SHIP.tiers[SHIP.tiers.indexOf(p.tier) + d]; return t ? slotKey(p.bay, p.row, t) : null; };
 const slotBelow = k => slotStep(k, -1), slotAbove = k => slotStep(k, 1);
-// fill order for one size: bottom tier first, across every bay of that size and every row
+// fill order for one size: bay by bay, and inside a bay bottom tier first across the rows. Filling one bay
+// up before opening the next stacks the boxes, so "later port lower" shows (spreading over every bay's
+// bottom tier first left all boxes on tier 02 and hid the rule)
 function shipSlots(size) {
   const out = [];
-  for (const tier of SHIP.tiers) for (const [bay, s] of Object.entries(SHIP.bays)) if (s === size)
-    for (let r = 1; r <= SHIP.rows; r++) out.push(slotKey(bay, r, tier));
+  for (const [bay, s] of Object.entries(SHIP.bays)) if (s === size)
+    for (const tier of SHIP.tiers) for (let r = 1; r <= SHIP.rows; r++) out.push(slotKey(bay, r, tier));
   return out;
 }
 const podCode = (v, pod) => ROUTES[v.line][pod - 1];
