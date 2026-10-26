@@ -21,3 +21,6 @@ Import life cycle ADVISED -> INBOUND -> EC/IN -> YARD -> EC/OUT -> DEPARTED with
 
 ## Risks
 A missed state change leaves a wrong step: covered by the full life-cycle tests above. Old saves get a short history (one visit, steps from now): stated in the Inspector as "history before version 5 is not known".
+
+## Built (2026-10-26)
+- Change review: REPAIR. Fixed: a late export skipped YARD (its LOAD job is made in the same cycle; YARD is now recorded first); old saves with containers that had left now keep their real out time; moves and charges carry their visit id, so a box that returns at once never shows the same move under both visits; the Unit column tooltip now says it opens the Inspector. Tests added for the late export and the old departed container. Smoke passes.

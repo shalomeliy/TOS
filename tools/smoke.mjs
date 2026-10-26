@@ -32,7 +32,7 @@ check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO
 check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
-for (const id of ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -40,7 +40,7 @@ for (const id of ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'gate',
 
 // rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -426,9 +426,86 @@ s = await state();
 check(s.ver === CUR_VER && !(await page.$('.flash.err')), 'v3 save loads at the current version');
 await page.click('[data-act="reset"]');
 
+// ---------- version 5: unit vs unit facility visit ----------
+const life = await page.evaluate(() => {
+  const steps = u => curVisit(u).steps.map(x => x.state).join('>');
+  const v1 = S.visits[0], v2 = S.visits[1];
+  const imp = Object.values(S.units).find(u => u.visit === v1.id && !u.holds.length);
+  const r = { advised: imp.transit };
+  for (let i = 0; i < 4; i++) cycle();                         // V001 arrives 07:00
+  r.inbound = imp.transit;
+  startWork(v1); syncTransit();
+  let n = 0; while (imp.state !== 'YARD' && n++ < 40) cycle();
+  // a truck takes it: gate out, then the truck leaves
+  FORMS.gateout({ unit: imp.id }); syncTransit();
+  r.ecout = imp.transit;
+  n = 0; while (imp.state !== 'DEPARTED' && n++ < 40) cycle();
+  r.importSteps = steps(imp); r.importOut = curVisit(imp).outBy;
+  // export: gate in for V002, then load, then the vessel sails
+  FORMS.gatein({ kind: 'EXPORT', visit: v2.id, pod: '2', line: 'RED', iso: '22G1' }); syncTransit();
+  const exp = Object.values(S.units).filter(u => u.category === 'EXPORT').pop();
+  n = 0; while (exp.state !== 'YARD' && n++ < 40) cycle();
+  arrive(v2); startWork(v2); syncTransit();
+  n = 0; while (v2.phase !== 'COMPLETE' && n++ < 200) cycle();
+  // a late export, gated in while the vessel is loading, still records YARD before EC/OUT (review finding)
+  const v3 = addVisit('MV Late Test', 'BLU', 0, 4, '28');   // imports keep it WORKING while the late box arrives
+  arrive(v3); startWork(v3); syncTransit();
+  FORMS.gatein({ kind: 'EXPORT', visit: v3.id, pod: '1', line: 'BLU', iso: '22G1' }); syncTransit();
+  const late = Object.values(S.units).filter(u => u.category === 'EXPORT').pop();
+  n = 0; while (late.state !== 'LOADED' && n++ < 40) cycle();
+  r.lateSteps = steps(late);
+  depart(v2); syncTransit();
+  r.exportSteps = steps(exp); r.exportOut = curVisit(exp).outBy;
+  // a held import refused at the gate records no step
+  const held = Object.values(S.units).find(u => u.state === 'YARD' && u.holds.length);
+  const before = steps(held); FORMS.gateout({ unit: held.id }); syncTransit(); r.heldSame = before === steps(held);
+  // the empty import comes back through the gate: same number, a new visit
+  FORMS.gatein({ kind: 'EMPTY', ret: imp.id, line: 'BLU', iso: '22G1' }); syncTransit();
+  r.back = { visits: imp.visits.length, oldClosed: imp.visits[0].outTime != null, newCat: curVisit(imp).category, newSteps: steps(imp), id: imp.id };
+  n = 0; while (imp.state !== 'YARD' && n++ < 40) cycle();
+  r.back.afterYard = steps(imp);
+  // no visit ever records the same state twice in a row
+  r.dupes = Object.values(S.units).filter(u => u.visits.some(x => x.steps.some((st, i) => i && st.state === x.steps[i - 1].state))).length;
+  return r;
+});
+check(life.advised === 'ADVISED' && life.inbound === 'INBOUND' && life.ecout === 'EC/OUT', 'import: ADVISED, then INBOUND, then EC/OUT at gate-out: ' + JSON.stringify([life.advised, life.inbound, life.ecout]));
+check(life.importSteps === 'ADVISED>INBOUND>EC/IN>YARD>EC/OUT>DEPARTED' && life.importOut === 'Truck', 'import life cycle: ' + life.importSteps);
+check(life.exportSteps === 'EC/IN>YARD>EC/OUT>LOADED>DEPARTED' && /^Vessel /.test(life.exportOut), 'export life cycle: ' + life.exportSteps);
+check(life.lateSteps === 'EC/IN>YARD>EC/OUT>LOADED', 'late export records YARD before EC/OUT: ' + life.lateSteps);
+check(life.heldSame, 'a refused truck records no step');
+check(life.back.visits === 2 && life.back.oldClosed && life.back.newCat === 'EMPTY' && life.back.newSteps === 'EC/IN' && life.back.afterYard === 'EC/IN>YARD', 'returning container keeps its number and gets a new visit: ' + JSON.stringify(life.back));
+check(life.dupes === 0, 'no visit repeats a state');
+// the screen: a container number opens the Inspector with its visits and life cycle
+await page.evaluate(() => render());
+await page.click('nav a[data-id="gate"]');
+await page.click(`#content a[data-act="unit"][data-id="${life.back.id}"]`);
+const insp = await page.textContent('#content');
+check(insp.includes('Unit Inspector') && insp.includes('UFV0') && (await page.$$('#content tr td.mono')).length >= 2 && insp.includes('Life cycle of'), 'container link opens the Inspector with its visits');
+check((await page.$$('.tstep')).length === 7 && !!(await page.$('.tstep.now')), 'life cycle shows 7 steps and the current one');
+noTip = await auditTips('inspector');
+check(noTip.length === 0, 'tooltips missing in the Inspector:\n  ' + noTip.join('\n  '));
+await page.click('nav a[data-id="inventory"]');
+check((await page.textContent('#content')).includes('Transit state'), 'inventory shows the Transit state column');
+
+// a version 4 save loads: every container gets one visit and a transit state
+await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), readFileSync(resolve('tools/fixtures/save-v4.json'), 'utf8'));
+await page.reload();
+s = await state();
+check(s.ver === CUR_VER && Object.values(s.units).every(u => u.visits.length === 1 && u.transit) && !(await page.$('.flash.err')), 'v4 save loads with one visit and a transit state per container');
+// a container that had already left in an old save keeps its real out time (review finding)
+const v4gone = JSON.parse(readFileSync(resolve('tools/fixtures/save-v4.json'), 'utf8'));
+const goneId = Object.keys(v4gone.units).find(id => v4gone.units[id].state === 'YARD');
+Object.assign(v4gone.units[goneId], { state: 'DEPARTED', pos: null, outTime: 123 });
+for (const k in v4gone.stacks) v4gone.stacks[k] = v4gone.stacks[k].filter(id => id !== goneId);
+await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), JSON.stringify(v4gone));
+await page.reload();
+s = await state();
+check(s.units[goneId].transit === 'DEPARTED' && s.units[goneId].visits[0].outTime === 123 && s.units[goneId].visits[0].steps.length === 1, 'old departed container keeps its out time: ' + JSON.stringify(s.units[goneId].visits[0]));
+await page.click('[data-act="reset"]');
+
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'stowage', 'gate', 'equipment']) {
+for (const id of ['overview', 'vessels', 'stowage', 'inspector', 'gate', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }
