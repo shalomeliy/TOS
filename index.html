@@ -18,6 +18,7 @@ body{background:#3a6ea5;font:12px Tahoma,"Segoe UI",Verdana,sans-serif;color:var
 .titlebar{display:flex;align-items:center;gap:6px;padding:3px 4px;color:#fff;font-weight:bold;
   background:linear-gradient(90deg,var(--title1),var(--title2))}
 .titlebar .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.titlebar .ver{font-weight:normal;font-family:"Lucida Console",Consolas,monospace;font-size:11px;background:#0003;padding:0 6px;white-space:nowrap;cursor:help}
 .wbtn{width:16px;height:14px;background:var(--face);color:#000;font:bold 9px Tahoma;display:grid;place-items:center;
   border:1px solid;border-color:var(--hl) var(--dark) var(--dark) var(--hl)}
 .menubar{display:flex;gap:2px;padding:2px 4px;border-bottom:1px solid var(--shadow)}
@@ -133,6 +134,7 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 <body>
 <div class="app">
   <div class="titlebar"><span class="t">TOS Trainer &mdash; N4-style Terminal Operating System (educational simulator)</span>
+    <span class="ver" id="appVer" data-tip="מספר הגרסה של הסימולטור ותאריך העדכון. אם המספר כאן תואם למה שכתבתי לך בהודעה, השדרוג עבר בהצלחה. המספר הראשון הוא הגרסה במפת הדרכים, והמספר אחרי הנקודה הוא מספר התיקון בתוכה."></span>
     <span class="wbtn" aria-hidden="true">_</span><span class="wbtn" aria-hidden="true">&#9633;</span><span class="wbtn" aria-hidden="true">x</span></div>
   <div class="menubar">
     <a data-act="nav" data-id="settings" tabindex="0"><u>F</u>ile</a><a data-act="nav" data-id="vessels" tabindex="0"><u>V</u>essel</a><a data-act="nav" data-id="yard" tabindex="0"><u>Y</u>ard</a><a data-act="nav" data-id="gate" tabindex="0"><u>G</u>ate</a><a data-act="nav" data-id="work" tabindex="0"><u>C</u>ontrol</a><a data-act="nav" data-id="billing" tabindex="0"><u>B</u>illing</a><a data-act="nav" data-id="mapping" tabindex="0"><u>H</u>elp</a></div>
@@ -169,6 +171,8 @@ const BLOCKS = [
 ];
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
+// shown top right; bump on every push: <roadmap version>.<fix number inside it>
+const APP_VERSION = 'v3.3', APP_DATE = '26-10-2026';
 const STATE_VER = 3;                              // bump when the saved shape changes, and add a MIGRATE step
 // each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
 const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
@@ -700,6 +704,7 @@ function depart(v) {
 
 // ---------- rendering ----------
 function render() {
+  $('appVer').textContent = `${APP_VERSION} (${APP_DATE})`;
   $('clock').textContent = fmt(S.clock);
   const ps = portState(S.clock);
   const psText = { WORKING: 'WORKING', 'GATE CLOSED': `GATE CLOSED - opens ${fmt(nextGateOpen(S.clock))}`, SHABBAT: 'SHABBAT - no work until Sat 20:00' }[ps];

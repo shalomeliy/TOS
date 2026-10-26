@@ -28,6 +28,7 @@ const state = () => page.evaluate(() => JSON.parse(JSON.stringify(window.TOS.sta
 
 // ISO 6346 check digit: CSQU305438 -> 3 (published example)
 check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO 6346 check digit');
+check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
 for (const id of ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {

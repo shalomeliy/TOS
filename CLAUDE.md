@@ -69,6 +69,10 @@ The user is new to port operations. Every button, link, field and checkbox, exis
 
 The user has never worked with a TOS. Every version ends with `docs/guides/v<N>-test-guide.md` in Hebrew, also copied into `HANDOFF.md`: every action in the simulator in working order, what to click, what should appear on screen, what it is in N4 terms, and what means it is broken. Words like WI, QC, AGV, ASC, POD are explained the first time. The version is not done without it.
 
+## Rule: version number top right (permanent)
+
+`APP_VERSION` / `APP_DATE` in `index.html` are shown in the title bar so the user can see an upgrade arrived. Bump on every push: `v<roadmap version>.<fix number inside it>` (a new roadmap version starts at `.0`), and tell the user the number in the reply.
+
 ## Rule: spike before building
 
 The user builds many capabilities from scratch. Before writing the full code of any new capability, always write a small experiment first (`feature-spike`): minimal code that tests the riskiest assumption and shows whether the feature is feasible and worth developing. Only after a GO verdict and the user's approval, plan and build the full capability. Skip only for small, clear changes, or when every part is already proven in this project (say so).
