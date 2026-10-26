@@ -73,6 +73,7 @@ nav a::before{content:"";display:inline-block;width:10px;height:10px;margin-righ
 nav a.cur{background:var(--sel);color:#fff}
 .content{overflow:auto;padding:8px 10px;min-width:0}
 h1{font-size:15px;margin:0 0 2px;cursor:help}
+th,.tag,legend,.kpi,.legend span,h3,.quay,.sea,.rail,.lane>span,.eqname,.pstatus{cursor:help}
 h1 .q{display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;font-size:11px;border:1px solid var(--shadow);border-radius:50%;background:var(--win);color:var(--muted)}
 .concept{color:var(--muted);margin-bottom:6px}
 .help{direction:rtl;text-align:right;background:#ffffe1;border:1px solid #a0a070;padding:5px 8px;margin:6px 0 10px;line-height:1.5}
@@ -888,7 +889,7 @@ const VIEWS = {
     return header('Equipment (ECS)', 'Equipment Control System; QC, AGV/AHT Manager, ASC Manager',
       'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן, כמו בנמל הדרום מוקטן פי 4: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ו-2 עגורני חצר אוטומטיים (ASC) בכל בלוק, 8 בסך הכל. משימה בבלוק לוקחת את העגורן הפנוי מבין השניים. בשבת מכונה פנויה מסומנת SHABBAT ולא מקבלת עבודה.') +
       `<table class="grid"><tr><th>Equipment</th><th>Kind</th><th>Status</th><th>Current WI</th><th class="num">Moves done</th></tr>` +
-      S.eq.map(e => `<tr><td class="mono">${e.id}</td><td>${e.desc}</td><td>${eqStatus(e)}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
+      S.eq.map(e => `<tr><td class="mono"><span class="eqname">${e.id}</span></td><td>${e.desc}</td><td>${eqStatus(e)}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
   },
   billing() {
     const t = S.tariff;
@@ -951,12 +952,12 @@ function layoutPanel() {
     return `<div class="quay" style="width:${Math.round(q.len * PX)}px"><b>Quay ${q.id}</b> <span class="note">${q.real} m real, ${q.len} m here</span>
       <div>${v ? esc(v.vessel) + ' ' + tag('ph-' + v.phase, v.phase) : '<span class="note">free</span>'}${waiting ? ` <span class="note">(${waiting} waiting)</span>` : ''}</div></div>`;
   }).join('');
-  const qcs = S.eq.filter(e => e.type === 'QC').map(e => `${e.id} ${eqStatus(e)}`).join(' ');
-  const agvs = S.eq.filter(e => e.type === 'AGV').map(e => `${e.id} ${eqStatus(e)}`).join(' ');
+  const qcs = S.eq.filter(e => e.type === 'QC').map(e => `<span class="eqname">${e.id}</span> ${eqStatus(e)}`).join(' ');
+  const agvs = S.eq.filter(e => e.type === 'AGV').map(e => `<span class="eqname">${e.id}</span> ${eqStatus(e)}`).join(' ');
   const blocks = BLOCKS.map(b => {
     const used = Object.keys(S.stacks).filter(k => k[0] === b.id).reduce((n, k) => n + S.stacks[k].length, 0);
     return `<div class="lblock"><b>Block ${b.id}</b> <span class="note">${b.use.join(' + ')}, ${used}/${b.bays * b.rows * MAX_TIER}</span>` +
-      S.eq.filter(e => e.type === 'ASC-' + b.id).map(e => `<div class="mono">${e.id} ${eqStatus(e)}</div>`).join('') + '</div>';
+      S.eq.filter(e => e.type === 'ASC-' + b.id).map(e => `<div class="mono"><span class="eqname">${e.id}</span> ${eqStatus(e)}</div>`).join('') + '</div>';
   }).join('');
   return `<fieldset><legend>Terminal layout &ndash; Ashdod South Port, scaled down x4</legend><div class="layout">
     <div class="sea">Sea</div><div class="quays">${quays}</div>
@@ -1121,9 +1122,149 @@ document.addEventListener('keydown', e => {
 // ---------- tooltips ----------
 function tipText(el) {
   if (el.dataset.tip) return el.dataset.tip;
-  const t = TIPS[el.dataset.act];
-  return typeof t === 'function' ? t(el) : t;
+  if (el.dataset.act) { const t = TIPS[el.dataset.act]; return typeof t === 'function' ? t(el) : t; }
+  return infoTip(el);
 }
+// every heading, column, status tag and screen part explains itself: looked up by its text (exact, else longest prefix)
+const INFO_SEL = 'th, .tag, legend, .kpi, .legend span, h3, .lblock, .quay, .sea, .rail, .lane > span, .eqname, .pstatus';
+function infoTip(el) {
+  const txt = (el.matches('.kpi') ? el.querySelector('span').textContent : el.textContent).trim();
+  const dict = INFO[el.matches('th') ? 'th' : el.matches('.tag') ? 'tag' : 'part'];
+  if (txt in dict) return dict[txt];
+  const k = Object.keys(dict).filter(k => k && txt.startsWith(k)).sort((a, b) => b.length - a.length)[0];
+  return k ? dict[k] : '';
+}
+const INFO = {
+  th: {
+    'Visit': 'מספר הביקור. כל פעם שאונייה מגיעה לנמל זה ביקור חדש, עם מספר משלו (V001, V002...).',
+    'Vessel': 'שם האונייה.',
+    'Line': 'חברת הספנות (קו הספנות) שהאונייה או המכולה שייכת לה. היא מקבלת את החשבונית.',
+    'Quay': 'ליד איזה רציף האונייה עוגנת: 27 (ארוך) או 28 (קצר). על כל רציף יכולה לעמוד אונייה אחת.',
+    'Phase': 'השלב של הביקור: INBOUND = בדרך, ARRIVED = ליד הרציף, WORKING = פורקים ומעמיסים, COMPLETE = העבודה נגמרה, DEPARTED = יצאה.',
+    'ETA': 'Estimated Time of Arrival: מתי האונייה אמורה להגיע.',
+    'ATA': 'Actual Time of Arrival: מתי האונייה הגיעה בפועל לרציף.',
+    'ATD': 'Actual Time of Departure: מתי האונייה יצאה בפועל.',
+    'To discharge': 'כמה מכולות יבוא עוד נמצאות על האונייה ומחכות שיורידו אותן.',
+    'To load': 'כמה מכולות ייצוא עוד מחכות בחצר (או בשער) כדי לעלות לאונייה.',
+    'Plan': 'מצב תוכנית ההעמסה: כמה מקומות באונייה מתוכננים, כמה כבר מלאים, וכמה אזהרות. "not planned" = התוכנית נבנית רק כשלוחצים Start work.',
+    'Actions': 'הכפתורים של השורה הזאת: מה אפשר לעשות עכשיו עם האונייה או החשבונית.',
+    'Category': 'סוג המכולה מבחינת הנמל: IMPORT = יבוא (ירדה מאונייה ותצא במשאית), EXPORT = ייצוא (באה במשאית ותעלה לאונייה), EMPTY = ריקה.',
+    'Cat.': 'סוג המכולה: IMPORT = יבוא, EXPORT = ייצוא, EMPTY = ריקה.',
+    'ON_VESSEL': 'כמה מכולות עדיין על אונייה ומחכות לפריקה.',
+    'AT_GATE': 'כמה מכולות נמצאות עכשיו על משאית בשער, לפני שהורידו אותן לחצר.',
+    'YARD': 'כמה מכולות עומדות בחצר.',
+    'LOADED': 'כמה מכולות כבר הועמסו על אונייה שעוד לא יצאה.',
+    'DEPARTED': 'כמה מכולות כבר יצאו מהנמל (באונייה או במשאית).',
+    'Tier': 'הקומה בערימה. T1 = על הקרקע, T4 = הכי גבוה.',
+    'Unit': 'מספר המכולה: 4 אותיות של הבעלים, 6 ספרות וספרת ביקורת. לחיצה מראה איפה היא.',
+    'Type': 'סוג וגודל המכולה לפי תקן בינלאומי: 22G1 = 20 רגל רגילה, 45G1 = 40 רגל גבוהה, 22R1 = 20 רגל מקוררת.',
+    'Vessel visit': 'לאיזה ביקור אונייה המכולה שייכת: האונייה שהביאה אותה, או זו שתיקח אותה.',
+    'State': 'איפה המכולה בחיים שלה: ON_VESSEL = על אונייה, AT_GATE = בשער, YARD = בחצר, LOADED = הועמסה, DEPARTED = יצאה.',
+    'Position': 'המיקום המדויק. בחצר: בלוק-bay-שורה-קומה (למשל A-01-1-T2). על אונייה: bay-שורה-קומה.',
+    'Tons': 'משקל המכולה בטון.',
+    'Days': 'כמה ימי אחסנה המכולה צברה בחצר. כל יום בלוח נספר, חוץ משבת.',
+    'Storage so far': 'כמה דמי אחסנה המכולה צברה עד עכשיו, אחרי ימי החינם. החיוב נרשם כשהיא יוצאת.',
+    'Holds': 'עיכובים על המכולה. CUSTOMS = עיכוב מכס: היא לא יכולה לצאת מהשער עד שמשחררים.',
+    'Open WI': 'הוראת עבודה פתוחה על המכולה: הזזה שהמערכת כבר תכננה ועוד לא הסתיימה.',
+    'Tx': 'מספר הפעולה בשער (Transaction). כל משאית שמגיעה = פעולה אחת.',
+    'Time': 'מתי זה קרה, לפי שעון הנמל.',
+    'Truck': 'מספר המשאית.',
+    'Status': 'המצב עכשיו. עמידה על התווית הצבעונית מסבירה אותה.',
+    'Reason / WI': 'למה המשאית נדחתה, או מספר הוראת העבודה שנוצרה בשבילה.',
+    'WI': 'מספר הוראת העבודה (Work Instruction): "להזיז את המכולה הזאת מכאן לשם".',
+    'From': 'מאיפה מזיזים את המכולה.',
+    'To': 'לאן מזיזים את המכולה.',
+    'Equipment': 'אילו מכונות מבצעות את ההזזה: QC = עגורן רציף, AGV = רכב אוטונומי, ASC = עגורן חצר.',
+    'Created': 'מתי ההוראה נוצרה.',
+    'Done': 'מתי ההוראה הסתיימה.',
+    'Rehandles': 'כמה הזזות מיותרות היו בדרך: מכולות שהיו מעל המכולה בערימה, והיה צריך להזיז אותן קודם.',
+    'Note': 'למה ההוראה מחכה, למשל: כל המכונות מהסוג הזה עסוקות, או שיש מכולה מעליה באונייה.',
+    'Kind': 'איזו מכונה זו.',
+    'Current WI': 'איזו הוראת עבודה המכונה מבצעת עכשיו.',
+    'Moves done': 'כמה הזזות המכונה כבר סיימה.',
+    'Invoice': 'מספר החשבונית.',
+    'Items': 'כמה חיובים יש בחשבונית.',
+    'Total': 'הסכום הכולל של החשבונית.',
+    'Charge': 'מספר החיוב: שורה אחת של כסף שהנמל גובה.',
+    'Event': 'על מה החיוב: הרמה מאונייה (LIFT_DISCH), הרמה לאונייה (LIFT_LOAD), שער (GATE_IN, GATE_OUT), אחסנה (STORAGE) או זיכוי (CREDIT).',
+    'Detail': 'פירוט קצר של החיוב.',
+    'Amount': 'הסכום בדולרים. סכום במינוס = זיכוי שמחזירים ללקוח.',
+    '': 'כאן אפשר לתת זיכוי על שורה.',
+    'מסך': 'המסך בסימולטור.',
+    'מה יש בסימולטור': 'מה המסך הזה עושה כאן.',
+    'ב-N4 האמיתי': 'מה הרעיון המקביל במערכת N4 האמיתית, לפי מקורות ציבוריים.',
+    'מה פישטנו': 'מה חסר כאן לעומת נמל אמיתי.',
+  },
+  tag: {
+    'IDLE': 'פנויה: המכונה מחכה למשימה.',
+    'BUSY': 'עסוקה: המכונה מבצעת עכשיו הוראת עבודה.',
+    'SHABBAT': 'שבת: המכונה לא מקבלת עבודה חדשה עד מוצאי שבת 20:00.',
+    'INBOUND': 'האונייה בדרך לנמל.',
+    'ARRIVED': 'האונייה ליד הרציף, ועוד לא התחילו לעבוד עליה. השלב הבא: Start work.',
+    'WORKING': 'פורקים ומעמיסים את האונייה עכשיו.',
+    'COMPLETE': 'כל העבודה הסתיימה. האונייה יכולה לצאת (Depart).',
+    'DEPARTED': 'האונייה יצאה מהנמל.',
+    'PLANNED': 'ההוראה מחכה בתור למכונות פנויות.',
+    'DISPATCHED': 'ההוראה נשלחה למכונות, והן מבצעות אותה עכשיו.',
+    'REJECTED': 'המשאית נדחתה בשער. הסיבה כתובה בעמודה שלידה.',
+    'HOLD': 'המכולה בעיכוב: היא לא יכולה לצאת מהשער.',
+    'CUSTOMS': 'עיכוב מכס: המכולה לא יכולה לצאת מהשער עד שהמכס משחרר אותה (כפתור Release).',
+    'DRAFT': 'טיוטה: החשבונית עוד לא נשלחה ללקוח, ואפשר לנעול אותה (Finalize).',
+    'FINAL': 'החשבונית נעולה ונשלחה ללקוח. מחכה לתשלום.',
+    'PAID': 'החשבונית שולמה.',
+  },
+  part: {
+    'Terminal layout': 'מפת הנמל מלמעלה, מהים ליבשה: הים, שני הרציפים עם האוניות, עגורני הרציף והרכבים, 4 הבלוקים בחצר עם העגורנים שלהם, ומסילת הרכבת.',
+    'Vessels': 'האוניות שעוד לא יצאו מהנמל, ובאיזה שלב כל אחת.',
+    'Units by category and state': 'ספירה של כל המכולות: לפי סוג (שורות) ולפי איפה הן עכשיו (עמודות).',
+    'Create vessel visit': 'כאן יוצרים אונייה חדשה שתגיע לנמל.',
+    'Receive (gate in)': 'משאית שמביאה מכולה לנמל: מכולת ייצוא שתעלה לאונייה, או מכולה ריקה שחוזרת.',
+    'Deliver (gate out)': 'משאית שבאה לקחת מכולה מהחצר ולצאת איתה מהנמל.',
+    'Queue DISCHARGE': 'תור הפריקה: הוראות להוריד מכולות מאונייה לחצר. כתוב כמה מחכות, כמה בביצוע וכמה הסתיימו.',
+    'Queue LOAD': 'תור ההעמסה: הוראות להעלות מכולות מהחצר לאונייה, לפי תוכנית ההעמסה.',
+    'Queue GATE_IN': 'תור השער פנימה: הוראות להוריד מכולה ממשאית לחצר.',
+    'Queue GATE_OUT': 'תור השער החוצה: הוראות להרים מכולה מהחצר למשאית.',
+    'Tariffs': 'המחירים שהנמל גובה. שינוי חל רק על חיובים חדשים.',
+    'Billable events not yet invoiced': 'חיובים שנרשמו ועוד לא נכנסו לחשבונית. בסוגריים: כמה שורות ומה הסכום.',
+    'Invoices': 'החשבוניות לחברות הספנות, והמצב של כל אחת.',
+    'Help': 'הגדרות העזרה.',
+    'Units in yard / slots': 'כמה מכולות בחצר, מתוך כמה מקומות יש בחצר בסך הכל.',
+    'Yard occupancy': 'כמה אחוז מהחצר מלא. חצר מלאה מדי = קשה לסדר מכולות בלי הזזות מיותרות.',
+    'Vessels at berth': 'כמה אוניות עומדות עכשיו ליד רציף.',
+    'Open work instructions': 'כמה הוראות עבודה עוד לא הסתיימו (מחכות או בביצוע).',
+    'Moves completed': 'כמה הזזות של מכולות כבר בוצעו מתחילת היום.',
+    'Rehandles (wasted moves)': 'כמה הזזות מיותרות היו: מכולות שהיה צריך להזיז רק כדי להגיע למכולה שמתחתיהן. תכנון טוב = מספר נמוך.',
+    'Charges not yet invoiced': 'כמה כסף נרשם וממתין לחשבונית.',
+    'Invoices not paid': 'כמה כסף בחשבוניות שעוד לא שולמו.',
+    'Sea': 'הים. האוניות מגיעות מכאן.',
+    'Quay 27': 'רציף 27: הרציף הארוך (800 מטר במציאות). כתוב איזו אונייה עומדת לידו ובאיזה שלב, או free אם הוא פנוי.',
+    'Quay 28': 'רציף 28: הרציף הקצר (445 מטר במציאות). כתוב איזו אונייה עומדת לידו ובאיזה שלב, או free אם הוא פנוי.',
+    'Quay cranes:': 'עגורני הרציף (QC): העגורנים הגדולים שמורידים מכולות מהאונייה ומעלים אליה. בנמל הדרום יש 8, כאן 2.',
+    'AGV lane:': 'הרכבים האוטונומיים (AGV): רכבים בלי נהג שמסיעים מכולה בין עגורן הרציף לחצר.',
+    'QC0': 'עגורן רציף. התווית לידו אומרת אם הוא פנוי, עסוק או בשבת.',
+    'AGV0': 'רכב אוטונומי. התווית לידו אומרת אם הוא פנוי, עסוק או בשבת.',
+    'ASC-': 'עגורן חצר אוטומטי (ASC). בכל בלוק יש שניים, ומשימה בבלוק לוקחת את הפנוי מביניהם.',
+    'Block A': 'בלוק A בחצר, למכולות ייצוא. כתוב כמה מכולות יש בו מתוך כמה מקומות, ואילו עגורני חצר עובדים בו.',
+    'Block B': 'בלוק B בחצר, למכולות ייצוא. כתוב כמה מכולות יש בו מתוך כמה מקומות, ואילו עגורני חצר עובדים בו.',
+    'Block C': 'בלוק C בחצר, למכולות יבוא. כתוב כמה מכולות יש בו מתוך כמה מקומות, ואילו עגורני חצר עובדים בו.',
+    'Block D': 'בלוק D בחצר, למכולות יבוא וריקות. כתוב כמה מכולות יש בו מתוך כמה מקומות, ואילו עגורני חצר עובדים בו.',
+    'Rail siding': 'מסילת רכבת שמגיעה לנמל. רכבות יתווספו בגרסה 7.',
+    'Export': 'צבע ירוק = מכולת ייצוא, שתעלה לאונייה.',
+    'Import': 'צבע כתום = מכולת יבוא, שירדה מאונייה ותצא במשאית.',
+    'Empty': 'צבע אפור = מכולה ריקה.',
+    'On hold': 'פסים אדומים = המכולה בעיכוב מכס.',
+    'Planned (dashed)': 'מסגרת מקווקווה = המקום מתוכנן, והמכולה עוד בחצר.',
+    'On board (solid)': 'מסגרת מלאה = המכולה כבר על האונייה.',
+    '! Warning': 'מסגרת אדומה עם ! = המקום שובר חוק סידור (למשל מכולה לנמל רחוק מעל מכולה לנמל קרוב).',
+    'Stop 1': 'צבע בהיר = המכולה יורדת בנמל הראשון במסלול, ולכן היא למעלה.',
+    'Stop 2': 'צבע בינוני = המכולה יורדת בנמל השני במסלול.',
+    'Stop 3': 'צבע כהה = המכולה יורדת בנמל האחרון, ולכן היא למטה.',
+    'Darker = heavier': 'בצבע לפי משקל: ככל שהצבע כהה יותר, המכולה כבדה יותר. הכבדות אמורות להיות למטה.',
+    'Planned': 'סיכום התוכנית: כמה מקומות מתוכננים, כמה כבר מלאים, כמה אזהרות, וכמה הזזות מיותרות בחצר ההעמסה גרמה.',
+    'No stowage plan yet': 'התוכנית נבנית כשלוחצים Start work על האונייה.',
+    'No plan': 'האונייה הזאת התחילה לעבוד לפני שהיה תכנון העמסה, ולכן היא עובדת בלי תוכנית.',
+  },
+};
 let tipFor = null;
 function showTip(el) {
   const text = PREFS.tips && tipText(el);
@@ -1144,7 +1285,7 @@ function hideTip() {
   if (tipFor) tipFor.removeAttribute('aria-describedby');
   tipFor = null;
 }
-const tipTarget = e => e.target.closest && e.target.closest('[data-tip], [data-act]');
+const tipTarget = e => e.target.closest && e.target.closest('[data-tip], [data-act], ' + INFO_SEL);
 document.addEventListener('mouseover', e => { const el = tipTarget(e); if (el && el !== tipFor) showTip(el); else if (!el) hideTip(); });
 document.addEventListener('focusin', e => { const el = tipTarget(e); if (el) showTip(el); });
 document.addEventListener('focusout', hideTip);

@@ -36,7 +36,7 @@ for (const id of ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'gate',
   check(await page.isVisible('.help'), 'help box shown: ' + id);
 }
 
-// rule: every control (button, link, field) and every screen title has a Hebrew tooltip.
+// rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
 const PAGES_ALL = ['overview', 'vessels', 'stowage', 'yard', 'inventory', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
@@ -49,6 +49,10 @@ const auditTips = when => page.evaluate(({ pages, when }) => {
     if (!h1 || !hebrew(h1.dataset.tip)) missing.push(`${when} ${id}: screen title has no tooltip`);
     document.querySelectorAll('button, a, input, select, textarea, form label, [data-act]').forEach(el => {
       if (!hasTip(el)) missing.push(`${when} ${id}: ` + el.outerHTML.slice(0, 70));
+    });
+    // every heading, column, status tag and screen part explains what it shows
+    document.querySelectorAll(INFO_SEL).forEach(el => {
+      if (!hebrew(tipText(el))) missing.push(`${when} ${id}: no explanation for "${el.textContent.trim().slice(0, 40)}" (${el.tagName.toLowerCase()}.${el.className})`);
     });
   }
   return missing;

@@ -63,7 +63,7 @@ Small, clear changes (typo, one-line copy edit, a config value) skip the pipelin
 
 ## Rule: a Hebrew tooltip on every control and every screen (permanent)
 
-The user is new to port operations. Every button, link, field and checkbox, existing and added in any future version, has a Hebrew tooltip (`data-tip` or an entry in `TIPS`). Every screen title has a tooltip from `SCREEN_TIPS` that says what you see on the screen and what you can do on it. A new screen is not done until it has its `SCREEN_TIPS` entry. `tools/smoke.mjs` fails on any control or screen without one (checked at the start and at the end of the scripted day).
+The user is new to port operations. Every button, link, field and checkbox, existing and added in any future version, has a Hebrew tooltip (`data-tip` or an entry in `TIPS`). Every screen title has a tooltip from `SCREEN_TIPS` that says what you see on the screen and what you can do on it. Every part of a screen that shows information also explains itself: section titles (`legend`), table columns (`th`), status tags (`.tag`), number tiles (`.kpi`), legend items and map parts. They are looked up by their text in `INFO` (selector `INFO_SEL`); a new heading, column or status needs an `INFO` entry. A new screen is not done until it has its `SCREEN_TIPS` entry. `tools/smoke.mjs` fails on any control or screen without one (checked at the start and at the end of the scripted day).
 
 ## Rule: a full Hebrew test guide for every version (permanent)
 
