@@ -1,6 +1,6 @@
 # Spec - Version 5: Unit vs Unit Facility Visit (a container and its visits)
 
-Status: **draft, waiting for Shalom's decisions** (2026-10-26). Roadmap: `docs/ROADMAP.md` row 5. Research: `N4-data-model-research.md` sections 1, 2, 9.
+Status: **decisions made by Shalom 2026-10-26: D1 = a, D2 = a.** Roadmap: `docs/ROADMAP.md` row 5. Research: `N4-data-model-research.md` sections 1, 2, 9.
 
 ## Context and observed problem
 In the simulator one record is both "the container" and "its stay in the port". When a container leaves, its story ends; if the same physical box came back, it would get a new number. In N4 (public sources) the **Unit** (the box: number, type, owner) is separate from the **Unit Facility Visit, UFV** (one stay in one terminal: category, carriers, position, times, state). A box that returns months later keeps its number and gets a new UFV. N4 also tracks a finer life-cycle state inside a visit, the **transit state**: Advised, Inbound, EC/In, Yard, EC/Out, Loaded, Departed. Today the simulator has only ON_VESSEL / AT_GATE / YARD / LOADED / DEPARTED, with no history.
