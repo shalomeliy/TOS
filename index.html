@@ -172,7 +172,7 @@ const BLOCKS = [
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
 // shown top right; bump on every push: <roadmap version>.<fix number inside it>
-const APP_VERSION = 'v3.3', APP_DATE = '26-10-2026';
+const APP_VERSION = 'v3.4', APP_DATE = '26-10-2026';
 const STATE_VER = 3;                              // bump when the saved shape changes, and add a MIGRATE step
 // each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
 const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
@@ -366,7 +366,8 @@ function slotReason(v, k) {
   if (!u) return 'מקום ריק.';
   if (u.category === 'IMPORT') return `מכולת יבוא שהגיעה על האונייה. היא יורדת כאן באשדוד. בפריקה מורידים קודם את הקומה העליונה, כי אי אפשר להרים מכולה שיש עליה מכולה אחרת.`;
   const stop = { 1: 'הנמל הראשון במסלול, לכן היא למעלה: יורידו אותה ראשונה.', 2: 'נמל באמצע המסלול, לכן באמצע.', 3: 'הנמל האחרון במסלול, לכן היא למטה: אף אחד לא יצטרך להזיז אותה בנמלים שלפני כן.' }[u.pod];
-  let t = `נוסעת ל-${podCode(v, u.pod)} (${PORTS[podCode(v, u.pod)]}). ${stop} משקל ${u.weight} טון: בין מכולות לאותו נמל, הכבדות למטה כדי שהאונייה תהיה יציבה.`;
+  const bay = slotParts(k).bay;
+  let t = `מכולה של ${sizeOf(u)} רגל, ולכן היא ב-bay ${bay}: ${sizeOf(u) === '40' ? 'ה-bay היחיד לאונייה הזאת שמיועד למכולות של 40 רגל' : 'אחד משני ה-bays למכולות של 20 רגל'}. נוסעת ל-${podCode(v, u.pod)} (${PORTS[podCode(v, u.pod)]}). ${stop} משקל ${u.weight} טון: בין מכולות לאותו נמל, הכבדות למטה כדי שהאונייה תהיה יציבה.`;
   if (v.plan && v.plan[k] && v.plan[k].late) t += ' המכולה הגיעה לשער אחרי שההעמסה התחילה, ולכן קיבלה את המקום הפנוי הנמוך ביותר.';
   if (ruleBreak(v, k)) t += ' אזהרה: המקום הזה שובר חוק. ' + (u.pod > exportAt(v, slotBelow(k)).pod ? 'היא נוסעת רחוק יותר מהמכולה שמתחתיה, אז בנמל של המכולה התחתונה יצטרכו להזיז אותה קודם.' : 'היא כבדה יותר מהמכולה שמתחתיה.');
   return t;
@@ -798,7 +799,7 @@ const VIEWS = {
         const next = on && v.plan && v.plan[k] && v.plan[k].unit !== v.onboard[k] ? S.units[v.plan[k].unit] : null;
         if (next) txt += `<br>then ${podCode(v, next.pod)}`;
         if (warn) { cls += ' warn'; txt = '! ' + txt; }
-        const label = `Slot ${k}: ${state}${u ? `, ${u.id}${u.category === 'EXPORT' ? `, POD ${podCode(v, u.pod)}, ${u.weight} t` : ''}` : ''}` +
+        const label = `Slot ${k}: ${state}${u ? `, ${u.id}, ${sizeOf(u)} ft${u.category === 'EXPORT' ? `, POD ${podCode(v, u.pod)}, ${u.weight} t` : ''}` : ''}` +
           (next ? `, then planned ${next.id}, POD ${podCode(v, next.pod)}, ${next.weight} t` : '') + (warn ? ', warning' : '');
         grid += `<button class="${cls}${UI.slot === k ? ' cur' : ''}" data-act="slot" data-id="${k}" aria-label="${esc(label)}"${style}>${txt || '&nbsp;'}</button>`;
       }
@@ -809,6 +810,7 @@ const VIEWS = {
       side = `<b>Slot ${UI.slot}</b> <span class="note">(bay-row-tier)</span>` + (su ? `<table class="grid"><tr><td>Unit</td><td>${unitLink(su.id)}</td></tr>
         <tr><td>Status</td><td>${v.onboard[UI.slot] ? (su.category === 'IMPORT' ? 'On board, to discharge' : 'Loaded') : 'Planned'}</td></tr>
         ${su.category === 'EXPORT' ? `<tr><td>POD</td><td>${podCode(v, su.pod)} ${PORTS[podCode(v, su.pod)]} (stop ${su.pod} of 3)</td></tr>` : ''}
+        <tr><td>Size</td><td>${sizeOf(su)}' <span class="note">(${su.iso} ${ISO[su.iso]}), bay ${UI.slot.slice(0, 2)} is a ${SHIP.bays[UI.slot.slice(0, 2)]}' bay</span></td></tr>
         <tr><td>Weight</td><td>${su.weight} t</td></tr><tr><td>Yard position</td><td class="mono">${posLabel(su)}</td></tr></table>` : '') +
         `<p class="rtl">${esc(slotReason(v, UI.slot))}</p>` + (ruleBreak(v, UI.slot) ? `<p class="flash err">${esc(ruleBreak(v, UI.slot))}</p>` : '');
     }
