@@ -12,7 +12,7 @@ Reply to the user in Hebrew (masculine form), short and direct, no emojis.
 - Verify command: `node tools/smoke.mjs` (loads `index.html` in headless Chromium via Playwright, runs a scripted day, fails on any console error).
 - Performance budget: not a public website; target instant load (< 1s) and no console errors.
 - Product direction: `docs/PRODUCT-DIRECTION.md`.
-- Git: remote `origin` = https://github.com/shalomeliy/TOS (branch `main`). The repo's earlier N4 Lab prototype is kept as `lab-v1.html`; `HANDOFF.md` and `N4-data-model-research.md` came from the repo. Push only when the user asks.
+- Git: remote `origin` = https://github.com/shalomeliy/TOS (branch `main`). The repo's earlier N4 Lab prototype is kept as `lab-v1.html`; `HANDOFF.md` and `N4-data-model-research.md` came from the repo. Always push to `origin main` after each commit (user's standing instruction, 2026-10-26); every push also updates the live site https://shalomeliy.github.io/TOS/ (GitHub Pages).
 
 ## Project skills
 
