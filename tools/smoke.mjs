@@ -32,7 +32,7 @@ check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO
 check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -40,7 +40,7 @@ for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory'
 
 // rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -110,7 +110,7 @@ await page.click(`[data-act="start"][data-id="${s.visits[1].id}"]`);
 for (let i = 0; i < 40; i++) await page.click('[data-act="cycle"]');
 s = await state();
 check(s.visits[1].phase === 'COMPLETE', 'visit 2 complete, got ' + s.visits[1].phase);
-check(Object.values(s.units).filter(u => u.visit === s.visits[1].id && u.category === 'EXPORT').every(u => u.state === 'LOADED'), 'all exports loaded');
+check(Object.values(s.units).filter(u => u.visit === s.visits[1].id && u.category === 'EXPORT' && !u.train).every(u => u.state === 'LOADED'), 'all exports loaded (except those still on the train)');
 await page.click(`[data-act="depart"][data-id="${s.visits[1].id}"]`);
 
 // stacks never exceed max height, every yard unit is in exactly one stack
@@ -265,7 +265,7 @@ const stow = await page.evaluate(() => {
   const v1 = S.visits[0], v2 = S.visits[1];
   arrive(v1); startWork(v1); arrive(v2); startWork(v2);
   const r = { exports: 0, planned: 0, breaks: 0, sizeMix: 0, floatLoad: 0, floatDisch: 0 };
-  const ex = Object.values(S.units).filter(u => u.visit === v2.id && u.category === 'EXPORT');
+  const ex = Object.values(S.units).filter(u => u.visit === v2.id && u.category === 'EXPORT' && !u.train);   // the demo train's exports are still on the train
   r.exports = ex.length; r.planned = ex.filter(u => v2.plan[u.vslot]?.unit === u.id).length;
   for (const k of Object.keys(v2.plan)) { if (ruleBreak(v2, k)) r.breaks++; if (SHIP.bays[slotParts(k).bay] !== sizeOf(S.units[v2.plan[k].unit])) r.sizeMix++; }
   const first = { ...v1.onboard };
@@ -567,9 +567,84 @@ s = await state();
 check(s.ver === CUR_VER && s.visits.every(v => v.cranes === 1) && s.eq.filter(e => e.type === 'QC').every(e => 'vessel' in e), 'old save gets cranes per visit and a vessel field per QC');
 await page.click('[data-act="reset"]');
 
+// ---------- version 7: rail ----------
+await page.click('[data-act="reset"]');
+s = await state();
+const t1 = s.trains[0];
+const onTrain = Object.values(s.units).filter(u => u.train === t1.id && u.state === 'ON_TRAIN');
+const bookedImp = Object.values(s.units).filter(u => u.train === t1.id && u.category === 'IMPORT');
+check(t1 && t1.phase === 'INBOUND' && t1.cars === 4 && onTrain.length === 4 && onTrain.every(u => u.category === 'EXPORT' && u.visit === 'V002' && u.car), 'demo train T001 brings 4 exports for V002 on its cars');
+check(bookedImp.length === 3 && bookedImp.filter(u => u.holds.length).length === 1 && onTrain.every(u => u.transit === 'ADVISED'), 'three yard imports booked to T001, one under hold; boxes on an inbound train are ADVISED');
+check(s.eq.some(e => e.id === 'RMG01' && e.type === 'RMG'), 'rail crane RMG01 exists');
+await page.click('nav a[data-id="gate"]');
+check(!(await page.$$eval('form[data-form="gateout"] option', os => os.map(o => o.value))).some(id => bookedImp.some(u => u.id === id)), 'imports booked to a train are not offered to trucks');
+await page.click('nav a[data-id="rail"]');
+check((await page.$$('.car')).length === 4 && (await page.textContent('#content')).includes('Inland shuttle 1'), 'rail screen draws the 4 cars of T001');
+// the train arrives by itself at 09:00 (12 cycles)
+for (let i = 0; i < 12; i++) await page.click('[data-act="cycle"]');
+s = await state();
+check(s.trains[0].phase === 'ARRIVED' && s.trains[0].ata === 180, 'T001 arrives on the siding at 09:00: ' + s.trains[0].phase);
+// a second train waits for the siding
+await page.fill('form[data-form="train"] input[name="eta"]', '0');
+await page.click('form[data-form="train"] button');
+await page.click('[data-act="cycle"]');
+s = await state();
+check(s.trains[1].phase === 'INBOUND' && /siding/.test(s.trains[1].wait || ''), 'a second train waits while the siding is taken: ' + s.trains[1].wait);
+await page.click('[data-act="trainShow"][data-id="T001"]');
+await page.click('[data-act="trainStart"][data-id="T001"]');
+s = await state();
+const railWi = s.wis.filter(w => w.train === 'T001');
+check(railWi.filter(w => w.kind === 'RAIL_DISCH').length === 4 && railWi.filter(w => w.kind === 'RAIL_LOAD').length === 3 && s.trains[0].phase === 'WORKING', 'start work: 4 rail discharges + 3 rail loads');
+check(Object.values(s.units).filter(u => u.train === 'T001' && u.category === 'IMPORT').every(u => u.car), 'every booked import gets a car');
+noTip = await auditTips('rail');
+check(noTip.length === 0, 'tooltips missing on the rail screen:\n  ' + noTip.join('\n  '));
+await page.click('nav a[data-id="rail"]');
+for (let i = 0; i < 12; i++) await page.click('[data-act="cycle"]');
+s = await state();
+const exIn = onTrain.map(u => s.units[u.id]);
+check(exIn.every(u => u.state === 'YARD' && ['A', 'B'].includes(u.pos[0]) && !u.train), 'rail exports go to the export blocks');
+check(s.wis.filter(w => w.train === 'T001' && w.status === 'COMPLETE').every(w => w.eq.includes('RMG01') && !w.eq.some(e => e.startsWith('AGV'))), 'rail moves use the rail crane and a yard crane, no AGV');
+const heldImp = s.units[bookedImp.find(u => u.holds.length).id];
+check(s.trains[0].phase === 'COMPLETE' && heldImp.state === 'YARD' && s.wis.find(w => w.id === heldImp.wi)?.note.startsWith('Hold'), 'train complete; the held import waits for its hold: ' + s.trains[0].phase);
+check(bookedImp.filter(u => !u.holds.length).every(u => s.units[u.id].state === 'LOADED' && s.units[u.id].transit === 'LOADED'), 'free imports are loaded onto the train');
+check(s.charges.filter(c => c.type === 'LIFT_RAIL').length === 6, 'six rail lifts charged');
+check(s.visits[1].phase === 'INBOUND' && exIn.every(u => s.units[u.id].category === 'EXPORT'), 'rail exports wait in the yard for V002');
+// release the hold: the box goes on the train even though work was complete; then the train departs
+await page.click('nav a[data-id="inventory"]');
+await page.click(`[data-act="release"][data-id="${heldImp.id}"]`);
+for (let i = 0; i < 2; i++) await page.click('[data-act="cycle"]');
+await page.click('nav a[data-id="rail"]');
+await page.click('[data-act="trainDepart"][data-id="T001"]');
+s = await state();
+check(s.trains[0].phase === 'DEPARTED' && bookedImp.every(u => s.units[u.id].state === 'DEPARTED' && s.units[u.id].transit === 'DEPARTED' && s.units[u.id].visits.at(-1).outBy.startsWith('Train')), 'all three imports leave by train');
+// the waiting train takes the siding
+await page.click('[data-act="cycle"]');
+s = await state();
+check(s.trains[1].phase === 'ARRIVED', 'the second train arrives once the siding is free');
+// when V002 works, the exports that came by rail are planned and loaded
+const railEx = await page.evaluate(ids => { const v = S.visits[1]; arrive(v); startWork(v); let n = 0; while (v.phase === 'WORKING' && n++ < 200) cycle(); return ids.map(id => S.units[id].state); }, exIn.map(u => u.id));
+check(railEx.every(x => x === 'LOADED'), 'exports that came by rail are loaded on V002: ' + railEx);
+// a train leaves without a box on hold: the box stays in the yard, free again
+const behind = await page.evaluate(() => {
+  const t = S.trains[1], u = Object.values(S.units).find(x => railReady(x) && x.holds.length);
+  if (!u) return 'no held import';
+  u.train = t.id; trainStart(t); let n = 0; while (t.phase === 'WORKING' && n++ < 40) cycle();
+  const ph = t.phase; trainDepart(t);
+  return { ph, train: u.train, wi: u.wi, state: u.state };
+});
+check(behind.ph === 'COMPLETE' && behind.train === null && behind.wi === null && behind.state === 'YARD', 'a held box is left behind when the train departs: ' + JSON.stringify(behind));
+// a version 6 save (the v4 fixture goes through every step) gets an empty train list and the rail crane
+await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), readFileSync(resolve('tools/fixtures/save-v4.json'), 'utf8'));
+await page.reload();
+s = await state();
+check(s.ver === CUR_VER && Array.isArray(s.trains) && s.trains.length === 0 && s.eq.some(e => e.id === 'RMG01'), 'old save gets the rail crane and no trains');
+await page.click('nav a[data-id="rail"]');
+check((await page.textContent('#content')).includes('No train visits'), 'rail screen works on an old save');
+await page.click('[data-act="reset"]');
+
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'inspector', 'gate', 'equipment']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'inspector', 'gate', 'rail', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }

@@ -83,7 +83,7 @@ nav a::before{content:"";display:inline-block;width:10px;height:10px;margin-righ
 nav a.cur{background:var(--sel);color:#fff}
 .content{overflow:auto;padding:8px 10px;min-width:0}
 h1{font-size:15px;margin:0 0 2px;cursor:help}
-th,.tag,legend,.kpi,.legend span,h3,.quay,.sea,.rail,.lane>span,.eqname,.pstatus,.bbar,.bday,.btick,.bshab,.bnow{cursor:help}
+th,.tag,legend,.kpi,.legend span,h3,.quay,.sea,.rail,.lane>span,.eqname,.pstatus,.bbar,.bday,.btick,.bshab,.bnow,.siding{cursor:help}
 h1 .q{display:inline-block;width:15px;height:15px;line-height:15px;text-align:center;font-size:11px;border:1px solid var(--shadow);border-radius:50%;background:var(--win);color:var(--muted)}
 .concept{color:var(--muted);margin-bottom:6px}
 .help{direction:rtl;text-align:right;background:#ffffe1;border:1px solid #a0a070;padding:5px 8px;margin:6px 0 10px;line-height:1.5}
@@ -143,6 +143,14 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 .bbar{position:absolute;height:19px;line-height:17px;font-size:11px;padding:0 4px;border:1px solid #0006;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bbar.ph-INBOUND{background:#fff;border-style:dashed}
 .bbar.bconf{border:2px solid var(--hold);font-weight:bold}
+.cars{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-end;padding:6px;background:#fff;border:1px solid #bbb;border-bottom:4px double #555;width:max-content;max-width:100%}
+.car{width:132px;cursor:help;background:#d9d2c3;border:1px solid #7a6f5c;padding:2px 3px 3px}
+.car b{display:block;font-size:10px;font-weight:normal;color:#4a4232}
+.cslots{display:flex;gap:2px;height:28px}
+.rbox{flex:1;font-size:9px;line-height:12px;padding:1px 2px;overflow:hidden;color:#fff;border:1px solid #0006;font-family:"Lucida Console",Consolas,monospace}
+.rbox.s40{flex:2}.rbox.EXPORT{background:var(--exp)}.rbox.IMPORT{background:var(--imp)}.rbox.EMPTY{background:var(--mty)}
+.rbox.planned{background:#fff;color:#000;border:2px dashed #333}.rbox.free{background:transparent;border:1px dotted #998f7a}
+.legend i.lg-rplan{border:2px dashed #333;background:#fff}
 .legend i.lg-shab{background:#e3d6f5}.legend i.lg-now{border:0;border-left:2px solid var(--hold);width:4px}.legend i.lg-conf{border:2px solid var(--hold);background:#fff}
 @media (max-width:760px){
   .main{grid-template-columns:minmax(0,1fr)}
@@ -193,8 +201,8 @@ const BLOCKS = [
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
 // shown top right; bump on every push: <roadmap version>.<fix number inside it>
-const APP_VERSION = 'v6.1', APP_DATE = '27-10-2026';
-const STATE_VER = 6;                              // bump when the saved shape changes, and add a MIGRATE step
+const APP_VERSION = 'v7.0', APP_DATE = '27-10-2026';
+const STATE_VER = 7;                             // bump when the saved shape changes, and add a MIGRATE step
 // each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
 const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
 const PORTS = { GRPIR: 'Piraeus', ITGOA: 'Genoa', ESVLC: 'Valencia', TRMER: 'Mersin', NLRTM: 'Rotterdam', EGPSD: 'Port Said', GBFXT: 'Felixstowe' };
@@ -209,6 +217,7 @@ const PAGES = [
   ['Vessel', [['vessels', 'Vessel Visits'], ['berth', 'Berth Schedule'], ['stowage', 'Stowage Plan']]],
   ['Yard', [['yard', 'Yard View'], ['inventory', 'Unit Inventory'], ['inspector', 'Unit Inspector']]],
   ['Gate', [['gate', 'Gate Transactions']]],
+  ['Rail', [['rail', 'Train Visits']]],
   ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
   ['Billing', [['billing', 'Charges & Invoices']]],
   ['Help', [['mapping', 'How it maps to N4'], ['settings', 'Settings']]],
@@ -223,6 +232,7 @@ const PAGE_TIPS = {
   inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן משחררים עיכוב מכס.',
   inspector: 'מכולה אחת לעומק: מי היא, כל הביקורים שלה בנמל, ושלבי החיים של כל ביקור.',
   gate: 'השער: משאיות שמביאות מכולות, או באות לקחת מכולות.',
+  rail: 'הרכבת: רכבות משא שמביאות מכולות ייצוא מהארץ ולוקחות מכולות יבוא פנימה לארץ.',
   work: 'תורי העבודה: כל הזזה של מכולה היא משימה שמחכה לציוד פנוי.',
   equipment: 'הציוד: עגורנים ורכבים. רואים מי עסוק ובמה.',
   billing: 'כסף: תעריפים, חיובים, חשבוניות ותשלומים.',
@@ -239,8 +249,9 @@ const SCREEN_TIPS = {
   inspector: 'מה רואים: מכולה אחת לעומק. למעלה המכולה עצמה (מספר, בעלים, סוג: לא משתנים). מתחת הביקורים שלה (UFV): כל פעם שהייתה בנמל, איך הגיעה ואיך יצאה. מתחת שבעת שלבי החיים של הביקור שנבחר, עם השעה של כל שלב, ואז ההזזות והחיובים של אותו ביקור. מה אפשר לעשות: לחפש מכולה, לבחור ביקור (Show), ולקפוץ למקום שלה בחצר.',
   inventory: 'מה רואים: רשימה של כל המכולות, עם הסוג, המיקום, המשקל, ימי האחסנה והעיכובים. מה אפשר לעשות: לשחרר עיכוב מכס, ולהציג גם מכולות שכבר יצאו.',
   gate: 'מה רואים: כל המשאיות שהגיעו לשער, ומה קרה לכל אחת (התקבלה, או נדחתה ולמה, למשל עיכוב מכס או שער סגור). מה אפשר לעשות: להכניס משאית עם מכולה, או לשלוח משאית לקחת מכולה מהחצר. השער פתוח א\'-ה\' 05:00-24:00, שישי 05:00-14:45, שבת סגור.',
+  rail: 'מה רואים: כל ביקורי הרכבת (באיזה שלב כל רכבת, כמה מכולות לפרוק ממנה וכמה להעמיס עליה), את מסילת הנמל (מי עומד עליה עכשיו), ציור של הקרונות של הרכבת שנבחרה עם המכולות שעליהם, ורשימת מכולות היבוא שמוזמנות לצאת ברכבת. מה אפשר לעשות: ליצור רכבת חדשה, להביא אותה למסילה, להתחיל עבודה (פריקה ואז העמסה), לשלוח אותה לדרך, ולהזמין מכולת יבוא לרכבת או לבטל הזמנה.',
   work: 'מה רואים: תורי העבודה. כל הזזה של מכולה היא משימה שמחכה, נשלחת לציוד או הסתיימה. מה אפשר לעשות: להציג גם משימות שהסתיימו. המשימות עצמן זזות כשמריצים סבבים.',
-  equipment: 'מה רואים: כל המכונות בנמל (2 עגורני רציף, 4 רכבים אוטונומיים ו-8 עגורני חצר, שניים בכל בלוק), מי עסוק, באיזו משימה, וכמה הזזות עשה. בשבת מכונה פנויה מסומנת SHABBAT. מה אפשר לעשות: רק להסתכל.',
+  equipment: 'מה רואים: כל המכונות בנמל (2 עגורני רציף, 4 רכבים אוטונומיים, 8 עגורני חצר, שניים בכל בלוק, ועגורן רכבת אחד), מי עסוק, באיזו משימה, וכמה הזזות עשה. בשבת מכונה פנויה מסומנת SHABBAT. מה אפשר לעשות: רק להסתכל.',
   billing: 'מה רואים: המחירים, החיובים שעוד לא נכנסו לחשבונית, והחשבוניות. מה אפשר לעשות: לשנות מחירים, להפיק חשבוניות, לנעול, לרשום תשלום ולתת זיכוי.',
   mapping: 'מה רואים: טבלה שמסבירה איזה רעיון של N4 כל מסך כאן מדגים, ומה חסר לעומת המערכת האמיתית. מה אפשר לעשות: רק לקרוא.',
   settings: 'מה רואים: הגדרות העזרה. מה אפשר לעשות: להדליק או לכבות את התיבות הצהובות ואת הבועות. ההגדרה נשמרת בדפדפן.',
@@ -259,6 +270,12 @@ const TIPS = {
   moveQuay: 'מעביר את האונייה (שעוד בדרך) לרציף השני. טוב כשהרציף שלה תפוס בזמן שהיא מגיעה.',
   etaShift: el => el.dataset.id.endsWith('-60') ? 'מקדים את ההגעה של האונייה בשעה אחת.' : 'דוחה את ההגעה של האונייה בשעה אחת, למשל כדי שתגיע אחרי שהרציף מתפנה.',
   qcAssign: el => `מעביר את עגורן הרציף ${el.dataset.id.split(':')[0]} לעבוד על האונייה ${el.dataset.id.split(':')[1]}. אם הוא באמצע הזזה, הוא מסיים אותה קודם.`,
+  trainArrive: 'הרכבת נכנסת למסילת הנמל עכשיו, בלי לחכות לשעה המתוכננת. אם המסילה תפוסה ברכבת אחרת, היא תחכה בחוץ.',
+  trainStart: 'מתחילים לעבוד על הרכבת: נוצרות משימות לפרוק את המכולות שהגיעו עליה, ואחר כך להעמיס את מכולות היבוא שהוזמנו לה. כל מכולה מקבלת קרון.',
+  trainDepart: 'הרכבת יוצאת מהנמל עם המכולות שעליה. מכולה שעוד מחכה (למשל בגלל עיכוב מכס) נשארת בחצר.',
+  trainShow: 'מציג את הקרונות של הרכבת הזאת ואת המכולות שמוזמנות לה.',
+  trainBook: 'מזמין את מכולת היבוא הזאת לצאת מהנמל ברכבת הזאת, במקום במשאית.',
+  trainUnbook: 'מבטל את ההזמנה: המכולה תישאר בחצר, ותוכל לצאת במשאית.',
   stowOpen: 'פותח את תוכנית ההעמסה של האונייה הזאת: איזו מכולה עולה לאיזה מקום באונייה.',
   stowVisit: 'מציג את תוכנית ההעמסה של האונייה הזאת.',
   bay: el => `מציג את bay ${el.dataset.id}: חתך אחד של האונייה. ${SHIP.bays[el.dataset.id] === '40' ? "ב-bay הזה עומדות רק מכולות של 40 רגל." : "ב-bay הזה עומדות רק מכולות של 20 רגל."}`,
@@ -314,6 +331,7 @@ function fmt(min) {
 const blockOf = pos => pos ? pos[0] : null;
 const stackKey = (b, bay, row) => `${b}-${String(bay).padStart(2, '0')}-${row}`;
 const posLabel = u => {
+  if (!u.pos && u.train && ['ON_TRAIN', 'LOADED'].includes(u.state)) return `Train ${u.train} car ${u.car}`;
   if (!u.pos) return ({ ON_VESSEL: 'Vessel', AT_GATE: 'Gate lane', LOADED: 'Vessel', DEPARTED: 'Gone' }[u.state] || '-') +
     (u.vslot && ['ON_VESSEL', 'LOADED'].includes(u.state) ? ' ' + u.vslot : '');
   return u.pos + '-T' + (S.stacks[u.pos].indexOf(u.id) + 1);
@@ -488,8 +506,11 @@ function deriveTransit(u) {
     case 'ON_VESSEL':
       if (wi && wi.kind === 'DISCHARGE' && wi.status === 'DISPATCHED') return 'EC/IN';
       return visitById(u.visit)?.phase === 'INBOUND' ? 'ADVISED' : 'INBOUND';
+    case 'ON_TRAIN':
+      if (wi && wi.kind === 'RAIL_DISCH' && wi.status === 'DISPATCHED') return 'EC/IN';
+      return trainById(u.train)?.phase === 'INBOUND' ? 'ADVISED' : 'INBOUND';
     case 'AT_GATE': return 'EC/IN';
-    case 'YARD': return wi && (wi.kind === 'LOAD' || wi.kind === 'GATE_OUT') ? 'EC/OUT' : 'YARD';
+    case 'YARD': return wi && ['LOAD', 'GATE_OUT', 'RAIL_LOAD'].includes(wi.kind) ? 'EC/OUT' : 'YARD';
     default: return u.state;          // LOADED, DEPARTED
   }
 }
@@ -500,12 +521,12 @@ function syncTransit() {
     if (!ufv || u.transit === t) continue;
     u.transit = t;
     ufv.steps.push({ state: t, time: S.clock });
-    if (t === 'DEPARTED') { ufv.outTime = S.clock; ufv.outBy = u.category === 'EXPORT' && u.visit ? 'Vessel ' + (visitById(u.visit)?.vessel || u.visit) : 'Truck'; }
+    if (t === 'DEPARTED') { ufv.outTime = S.clock; ufv.outBy = u.train ? 'Train ' + (trainById(u.train)?.name || u.train) : u.category === 'EXPORT' && u.visit ? 'Vessel ' + (visitById(u.visit)?.vessel || u.visit) : 'Truck'; }
   }
 }
 // an empty box that left comes back through the gate: same Unit, a new visit, nothing kept from the old stay
 function returnUnit(u) {
-  Object.assign(u, { category: 'EMPTY', state: 'AT_GATE', visit: null, pos: null, vslot: null, pod: null, holds: [], short: false,
+  Object.assign(u, { category: 'EMPTY', state: 'AT_GATE', visit: null, train: null, car: null, pos: null, vslot: null, pod: null, holds: [], short: false,
     inTime: null, outTime: null, wi: null, weight: 2.2 });
   openVisit(u, 'Truck (empty return)', S.clock);
   return u;
@@ -527,8 +548,8 @@ function flash(type, text) { UI.msg = { type, text }; }
 function fresh() {
   S = {
     ver: STATE_VER, clock: 0, auto: false, workOn: true, rng: 20261022,
-    seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0 },
-    units: {}, stacks: {}, visits: [], wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
+    seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0 },
+    units: {}, stacks: {}, visits: [], trains: [], wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
     stats: { rehandles: 0, moves: 0 },
     tariff: { lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 },
   };
@@ -536,6 +557,7 @@ function fresh() {
   ['QC01', 'QC02'].forEach(id => S.eq.push({ id, type: 'QC', desc: 'Quay crane', status: 'IDLE', wi: null, moves: 0, vessel: null }));
   ['AGV01', 'AGV02', 'AGV03', 'AGV04'].forEach(id => S.eq.push({ id, type: 'AGV', desc: 'Automated guided vehicle', status: 'IDLE', wi: null, moves: 0 }));
   BLOCKS.forEach(b => [1, 2].forEach(n => S.eq.push(newASC(b.id, n))));
+  S.eq.push(newRMG());
 
   // seed: an earlier vessel left imports in the yard, some under customs hold
   const v1 = addVisit('MV Training Star', 'BLU', 60, 8, '27', 2);
@@ -553,15 +575,20 @@ function fresh() {
     const u = addUnit({ line: 'GRN', category: 'EMPTY', iso: '22G1', state: 'YARD', inTime: -1440 });
     placeUnit(u, planSlot(u));
   }
-  log('SYSTEM', 'Demo terminal created. ' + v1.vessel + ' due ' + fmt(v1.eta) + ', ' + v2.vessel + ' due ' + fmt(v2.eta) + '.');
+  // a freight train (version 7): brings exports for V002 from inland, and takes three of the yard imports inland
+  // (imports 3-5, one of them under customs hold; added last so the seeds above stay the same)
+  const t1 = addTrain('Inland shuttle 1', 180, 4, 4, v2.id);
+  Object.values(S.units).filter(u => u.category === 'IMPORT' && u.state === 'YARD').slice(3, 6).forEach(u => { u.train = t1.id; });
+  log('SYSTEM', 'Demo terminal created. ' + v1.vessel + ' due ' + fmt(v1.eta) + ', ' + v2.vessel + ' due ' + fmt(v2.eta) + ', train ' + t1.name + ' due ' + fmt(t1.eta) + '.');
   syncTransit();
 }
 function addUnit(p) {
-  const u = Object.assign({ holds: [], visit: null, pos: null, inTime: null, outTime: null, wi: null, weight: 0, pod: null, vslot: null }, p);
+  const u = Object.assign({ holds: [], visit: null, train: null, car: null, pos: null, inTime: null, outTime: null, wi: null, weight: 0, pod: null, vslot: null }, p);
   u.id = newCntr(u.line);
   u.weight = u.category === 'EMPTY' ? 2.2 : Math.round((8 + rand() * 18) * 10) / 10;
   if (u.category === 'EXPORT' && !u.pod) u.pod = 1 + Math.floor(rand() * 3);
-  const ufv = openVisit(u, u.state === 'ON_VESSEL' ? 'Vessel ' + (visitById(u.visit)?.vessel || u.visit) : u.state === 'AT_GATE' ? 'Truck' : 'Before the simulation',
+  const ufv = openVisit(u, u.state === 'ON_VESSEL' ? 'Vessel ' + (visitById(u.visit)?.vessel || u.visit) : u.state === 'ON_TRAIN' ? 'Train ' + (trainById(u.train)?.name || u.train)
+    : u.state === 'AT_GATE' ? 'Truck' : 'Before the simulation',
     u.inTime ?? S.clock);
   // boxes already in the yard when the demo starts: their visit starts at YARD, at the time they came in
   if (u.state === 'YARD') { u.transit = 'YARD'; ufv.steps.push({ state: 'YARD', time: u.inTime ?? S.clock }); }
@@ -570,6 +597,8 @@ function addUnit(p) {
 }
 // two ASCs share each block; both have the block's type, so dispatch takes whichever is free
 const newASC = (block, n) => ({ id: `ASC-${block}${n}`, type: 'ASC-' + block, desc: `Automated stacking crane ${n}, block ${block}`, status: 'IDLE', wi: null, moves: 0 });
+// one rail-mounted gantry crane over the siding lifts boxes between the railcars and the yard (the real machine at Ashdod is not known)
+const newRMG = () => ({ id: 'RMG01', type: 'RMG', desc: 'Rail crane over the siding (rail-mounted gantry)', status: 'IDLE', wi: null, moves: 0 });
 function addVisit(vessel, line, etaIn, imports, quay, cranes) {
   const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, quay: quay || '27', cranes: cranes || 1, wait: null, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null,
     plan: null, onboard: {} };
@@ -594,6 +623,11 @@ function load() {
 }
 // one step per saved version; each step brings a save up by one version
 const MIGRATE = {
+  6(s) {   // version 6 -> 7: rail. No trains yet; the rail crane joins the equipment
+    s.trains = s.trains || [];
+    s.seq.train = s.seq.train || 0;
+    if (!s.eq.some(e => e.type === 'RMG')) s.eq.push(newRMG());
+  },
   5(s) {   // version 5 -> 6: berth schedule. Every visit asks for one quay crane; cranes are handed out at the next cycle
     s.visits.forEach(v => { v.cranes = v.cranes || 1; });
     s.eq.forEach(e => { if (e.type === 'QC') e.vessel = e.vessel || null; });
@@ -641,7 +675,7 @@ function normalize(s) {
     ['eq', 'visits', 'wis', 'charges', 'invoices', 'gate', 'log'].every(k => Array.isArray(s[k]));
   if (!ok) throw new Error('unknown format');
   // fill counters and settings a hand-edited or older save may lack, and refuse positions that point nowhere
-  s.seq = Object.assign({ cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0 }, s.seq);
+  s.seq = Object.assign({ cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0 }, s.seq);
   s.stats = Object.assign({ rehandles: 0, moves: 0 }, s.stats);
   s.tariff = Object.assign({ lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 }, s.tariff);
   if (Object.values(s.units).some(u => u.pos && !s.stacks[u.pos])) throw new Error('a unit is in a yard slot that does not exist');
@@ -722,13 +756,15 @@ function needs(wi, destKey) {
     case 'LOAD': return ['ASC-' + blockOf(u.pos), 'AGV', 'QC'];
     case 'GATE_IN': return ['ASC-' + blockOf(destKey)];
     case 'GATE_OUT': return ['ASC-' + blockOf(u.pos)];
+    case 'RAIL_DISCH': return ['RMG', 'ASC-' + blockOf(destKey)];
+    case 'RAIL_LOAD': return ['ASC-' + blockOf(u.pos), 'RMG'];
   }
   return [];
 }
 function tryDispatch(wi) {
   const u = S.units[wi.unit];
   let dest = null;
-  if (wi.kind === 'DISCHARGE' || wi.kind === 'GATE_IN') {
+  if (['DISCHARGE', 'GATE_IN', 'RAIL_DISCH'].includes(wi.kind)) {
     dest = planSlot(u);
     if (!dest) { wi.note = 'No yard space'; return false; }
   }
@@ -741,7 +777,7 @@ function tryDispatch(wi) {
   picked.forEach(e => { e.status = 'BUSY'; e.wi = wi.id; });
   wi.eq = picked.map(e => e.id);
   wi.dest = dest;
-  wi.from = wi.kind === 'DISCHARGE' ? 'Vessel' : wi.kind === 'GATE_IN' ? 'Gate lane' : u.pos;
+  wi.from = wi.kind === 'DISCHARGE' ? 'Vessel' : wi.kind === 'GATE_IN' ? 'Gate lane' : wi.kind === 'RAIL_DISCH' ? posLabel(u) : u.pos;
   wi.status = 'DISPATCHED';
   wi.note = '';
   wi.started = S.clock;
@@ -771,16 +807,23 @@ function complete(wi) {
     retrieve(u, wi); u.state = 'DEPARTED'; u.outTime = S.clock;
     charge(u, 'GATE_OUT', t.gateFee + t.lift, 'Gate + lift on truck'); chargeStorage(u);
     const tx = S.gate.find(g => g.wi === wi.id); if (tx) tx.status = 'COMPLETE';
+  } else if (wi.kind === 'RAIL_DISCH') {
+    placeUnit(u, wi.dest); u.state = 'YARD'; u.inTime = S.clock; u.train = null; u.car = null;
+    charge(u, 'LIFT_RAIL', t.lift, 'Rail discharge (off the railcar)');
+  } else if (wi.kind === 'RAIL_LOAD') {
+    wi.from = posLabel(u);
+    retrieve(u, wi); u.state = 'LOADED'; u.outTime = S.clock;
+    charge(u, 'LIFT_RAIL', t.lift, 'Rail load (onto the railcar)'); chargeStorage(u);
   }
   wi.eq.forEach(id => { const e = S.eq.find(x => x.id === id); e.status = 'IDLE'; e.wi = null; e.moves++; });
   wi.status = 'COMPLETE'; wi.done = S.clock; wi.note = '';
   u.wi = null;
   S.stats.moves++;
-  log('ECS', `${wi.id} ${wi.kind} ${u.id} done -> ${wi.kind === 'DISCHARGE' || wi.kind === 'GATE_IN' ? wi.dest : u.state}` + (wi.rehandles ? ` (${wi.rehandles} rehandle${wi.rehandles > 1 ? 's' : ''})` : ''));
+  log('ECS', `${wi.id} ${wi.kind} ${u.id} done -> ${wi.dest || (wi.kind === 'RAIL_LOAD' ? posLabel(u) : u.state)}` + (wi.rehandles ? ` (${wi.rehandles} rehandle${wi.rehandles > 1 ? 's' : ''})` : ''));
   // an export that arrives while its vessel is working joins the load queue
   // record YARD now: a late export gets its LOAD job in this same cycle, which would skip straight to EC/OUT
   syncTransit();
-  if (wi.kind === 'GATE_IN' && u.category === 'EXPORT' && v && v.phase === 'WORKING') {
+  if (['GATE_IN', 'RAIL_DISCH'].includes(wi.kind) && u.category === 'EXPORT' && v && v.phase === 'WORKING') {
     if (!v.plan) newWI('LOAD', u, { visit: v.id });
     else if (lateSlot(v, u)) {
       newWI('LOAD', u, { visit: v.id, seq: v.plan[u.vslot].seq });
@@ -793,6 +836,7 @@ function cycle() {
   S.wis.filter(w => w.status === 'DISPATCHED').forEach(complete);
   // vessel arrivals by ETA (a vessel whose quay is taken waits)
   S.visits.filter(v => v.phase === 'INBOUND' && v.eta <= S.clock).forEach(v => arrive(v));
+  S.trains.filter(t => t.phase === 'INBOUND' && t.eta <= S.clock).forEach(t => trainArrive(t));
   assignCranes();
   // Shabbat: running jobs finish above, but no new job is sent to any machine
   const work = isWorkTime(S.clock);
@@ -803,7 +847,7 @@ function cycle() {
   const planned = S.wis.filter(w => w.status === 'PLANNED');
   if (!work) { planned.forEach(w => { w.note = 'Shabbat'; }); finishVisits(); return syncTransit(); }
   // discharge before load on the same vessel; discharge top tier first, load in plan order, the rest by creation
-  const order = { DISCHARGE: 0, GATE_IN: 1, GATE_OUT: 1, LOAD: 2 };
+  const order = { DISCHARGE: 0, RAIL_DISCH: 0, GATE_IN: 1, GATE_OUT: 1, LOAD: 2, RAIL_LOAD: 2 };
   const rank = w => {
     const u = S.units[w.unit];
     if (w.kind === 'LOAD' && w.seq != null) return w.seq;
@@ -818,6 +862,9 @@ function cycle() {
       // a box cannot float: the slot below must hold its box first; a box cannot be lifted out from under another
       if (w.kind === 'LOAD' && v && v.plan && u.vslot && slotBelow(u.vslot) && !v.onboard[slotBelow(u.vslot)]) { w.note = 'Slot below not loaded'; return; }
       if (w.kind === 'DISCHARGE' && v && u.vslot && slotAbove(u.vslot) && v.onboard[slotAbove(u.vslot)]) { w.note = 'Slot above not discharged'; return; }
+      // a train is emptied before it is loaded; a box on hold cannot leave by rail any more than by truck
+      if (w.kind === 'RAIL_LOAD' && S.wis.some(d => d.kind === 'RAIL_DISCH' && d.train === w.train && d.status !== 'COMPLETE')) { w.note = 'After discharge'; return; }
+      if (w.kind === 'RAIL_LOAD' && u.holds.length) { w.note = 'Hold: ' + u.holds.join(', '); return; }
       tryDispatch(w);
     });
   finishVisits();
@@ -832,6 +879,13 @@ function finishVisits() {
     log('VESSEL', `${v.vessel} (${v.id}) work complete` + (freed.length ? `, ${freed.map(e => e.id).join(' + ')} free for the next vessel` : ''));
   });
   assignCranes();
+  // a train is complete when nothing is left but boxes that wait for a hold release (it may sail without them)
+  S.trains.filter(t => t.phase === 'WORKING').forEach(t => {
+    const open = S.wis.filter(w => w.train === t.id && w.status !== 'COMPLETE');
+    if (open.some(w => !(w.kind === 'RAIL_LOAD' && w.status === 'PLANNED' && S.units[w.unit].holds.length))) return;
+    t.phase = 'COMPLETE';
+    log('RAIL', `${t.name} (${t.id}) work complete` + (open.length ? `, ${open.length} box(es) still wait for a hold release` : ''));
+  });
 }
 
 // ---------- vessel ----------
@@ -867,7 +921,7 @@ function depart(v) {
   let rolled = 0;
   Object.values(S.units).forEach(u => {
     if (u.visit !== v.id) return;
-    if (u.state === 'LOADED') u.state = 'DEPARTED';
+    if (u.state === 'LOADED' && !u.train) u.state = 'DEPARTED';
     else if (u.category === 'EXPORT' && u.state !== 'DEPARTED') {
       rolled++;
       if (v.plan && u.vslot && v.plan[u.vslot]?.unit === u.id) delete v.plan[u.vslot];
@@ -921,6 +975,68 @@ function assignCranes() {
   });
 }
 
+// ---------- rail (version 7): a train visit is a small vessel on land ----------
+// a train has numbered railcars of 40 ft each (two 20' or one 40'). u.train = the train a box is on or booked to, u.car = its car.
+// Boxes that arrive by train are exports for a vessel; boxes that leave by train are imports going inland.
+const RAIL_CAR_FT = 40, SIDING = 'Rail siding';
+const trainById = id => S.trains.find(t => t.id === id);
+const carNo = n => String(n).padStart(2, '0');
+// feet used on one car: boxes still on it from the inbound trip, or (outbound) loaded or planned onto it
+const carFeet = (t, car, inbound) => Object.values(S.units).filter(u => u.train === t.id && u.car === car && (u.state === 'ON_TRAIN') === inbound)
+  .reduce((n, u) => n + Number(sizeOf(u)), 0);
+const carFor = (t, u, inbound) => { for (let c = 1; c <= t.cars; c++) if (carFeet(t, carNo(c), inbound) + Number(sizeOf(u)) <= RAIL_CAR_FT) return carNo(c); return null; };
+function addTrain(name, etaIn, cars, boxes, vesselId) {
+  const t = { id: 'T' + String(++S.seq.train).padStart(3, '0'), name, cars, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null, wait: null };
+  S.trains.push(t);
+  const v = visitById(vesselId);
+  for (let i = 0; i < boxes && v; i++) {
+    const u = addUnit({ line: v.line, category: 'EXPORT', iso: i % 2 ? '22G1' : '45G1', visit: v.id, state: 'ON_TRAIN', train: t.id });
+    u.car = carFor(t, u, true);
+    if (!u.car) { delete S.units[u.id]; break; }   // the train is full
+  }
+  return t;
+}
+// one train on the siding at a time; no trains run on Shabbat
+const trainHolder = except => S.trains.find(x => x !== except && ['ARRIVED', 'WORKING', 'COMPLETE'].includes(x.phase));
+function trainArrive(t) {
+  const other = trainHolder(t);
+  const wait = !isWorkTime(S.clock) ? 'Shabbat: no trains until Sat 20:00' : other ? `Waiting for the siding (${other.name})` : null;
+  if (wait) {
+    if (t.wait !== wait) log('RAIL', `${t.name} (${t.id}) ${wait.toLowerCase()}`);
+    t.wait = wait;
+    return false;
+  }
+  t.wait = null; t.phase = 'ARRIVED'; t.ata = S.clock;
+  log('RAIL', `${t.name} (${t.id}) arrived on the ${SIDING.toLowerCase()}`);
+  return true;
+}
+const bookedTo = t => Object.values(S.units).filter(u => u.train === t.id && u.category === 'IMPORT' && u.state === 'YARD');
+const railReady = u => u.category === 'IMPORT' && u.state === 'YARD' && !u.train && !u.wi;
+function trainStart(t) {
+  let d = 0, l = 0, left = 0;
+  Object.values(S.units).filter(u => u.train === t.id && u.state === 'ON_TRAIN' && !u.wi).forEach(u => { newWI('RAIL_DISCH', u, { train: t.id }); d++; });
+  // 40' boxes first, so two 20' boxes do not split a car a 40' needs
+  bookedTo(t).filter(u => !u.wi).sort((a, b) => sizeOf(b) - sizeOf(a)).forEach(u => {
+    u.car = carFor(t, u, false);
+    if (u.car) { newWI('RAIL_LOAD', u, { train: t.id }); l++; }
+    else { u.train = null; left++; log('RAIL', `${u.id} does not fit on ${t.name}: no car with room, it stays in the yard`); }
+  });
+  t.phase = 'WORKING'; t.started = S.clock;
+  log('RAIL', `${t.name}: work started, ${d} rail discharge + ${l} rail load instructions created` + (left ? `, ${left} did not fit` : ''));
+  flash('ok', `${d} rail discharge and ${l} rail load work instructions created. Discharge comes first, then loading. Run cycles to execute them.` + (left ? ` ${left} box(es) did not fit on the cars.` : ''));
+}
+function trainDepart(t) {
+  t.phase = 'DEPARTED'; t.atd = S.clock;
+  let left = 0;
+  Object.values(S.units).filter(u => u.train === t.id).forEach(u => {
+    if (u.state === 'LOADED') { u.state = 'DEPARTED'; return; }
+    // a box that never got on (a hold): its job is dropped and it stays in the yard, free to leave another way
+    if (u.wi) S.wis = S.wis.filter(w => w.id !== u.wi);
+    u.wi = null; u.train = null; u.car = null; left++;
+  });
+  log('RAIL', `${t.name} departed` + (left ? `, ${left} box(es) left behind in the yard` : ''));
+}
+
 // ---------- rendering ----------
 function render() {
   $('appVer').textContent = `${APP_VERSION} (${APP_DATE})`;
@@ -944,7 +1060,8 @@ function header(title, concept, helpHe) {
   return `<h1 tabindex="0" data-tip="${esc(SCREEN_TIPS[UI.page])}">${title} <span class="q" aria-hidden="true">?</span></h1><div class="concept">N4 concept: ${concept}</div>` + (PREFS.help ? `<div class="help">${helpHe}</div>` : '');
 }
 const tag = (cls, text) => `<span class="tag ${cls}">${esc(text)}</span>`;
-const unitLink = id => `<a href="#" data-act="unit" data-id="${id}" class="mono">${id}</a>`;
+const wiTo = w => w.dest || ({ LOAD: 'Vessel', GATE_OUT: 'Truck', RAIL_LOAD: 'Train' + (S.units[w.unit]?.car ? ' car ' + S.units[w.unit].car : '') }[w.kind] || '');
+const unitLink = id =>`<a href="#" data-act="unit" data-id="${id}" class="mono">${id}</a>`;
 
 const VIEWS = {
   overview() {
@@ -1212,7 +1329,7 @@ const VIEWS = {
     const lifeBlock = `<fieldset><legend>Life cycle of ${ufv ? ufv.id : '-'} (transit state)</legend><ol class="tsteps">${steps}</ol>
       ${ufv && ufv.legacy ? '<p class="note">This visit was saved before version 5, so the steps before that are not known.</p>' : ''}</fieldset>
       <fieldset><legend>Moves in this visit</legend>${moves.length ? `<table class="grid"><tr><th>WI</th><th>Kind</th><th>From</th><th>To</th><th>Status</th><th>Done</th></tr>` +
-        moves.map(w => `<tr><td>${w.id}</td><td>${w.kind}</td><td class="mono">${esc(w.from || '')}</td><td class="mono">${esc(w.dest || (w.kind === 'LOAD' ? 'Vessel' : w.kind === 'GATE_OUT' ? 'Truck' : ''))}</td><td>${tag('st-' + w.status, w.status)}</td><td>${w.done != null ? fmt(w.done) : ''}</td></tr>`).join('') + '</table>' : '<p class="note">None.</p>'}</fieldset>
+        moves.map(w => `<tr><td>${w.id}</td><td>${w.kind}</td><td class="mono">${esc(w.from || '')}</td><td class="mono">${esc(wiTo(w))}</td><td>${tag('st-' + w.status, w.status)}</td><td>${w.done != null ? fmt(w.done) : ''}</td></tr>`).join('') + '</table>' : '<p class="note">None.</p>'}</fieldset>
       <fieldset><legend>Charges in this visit</legend>${chg.length ? chargeTable(chg) : '<p class="note">None.</p>'}</fieldset>`;
     return head + search + `<div class="insp">${unitBlock}${visitsBlock}</div>${lifeBlock}`;
   },
@@ -1221,15 +1338,15 @@ const VIEWS = {
     return header('Unit Inventory', 'Units (containers) with category, freight kind, position, holds',
       'כל מכולה במערכת. המספר שלה בנוי כמו מספר אמיתי: 4 אותיות של הבעלים, 6 ספרות, וספרת ביקורת בסוף (מחושבת בנוסחה של תקן ISO 6346). כאן גם משחררים עיכוב מכס, ורואים כמה ימים המכולה כבר בחצר וכמה אחסנה היא צוברת.') +
       `<p><label><input type="checkbox" data-act="showGone" ${UI.showGone ? 'checked' : ''}> Show departed units</label></p>
-      <table class="grid"><tr><th>Unit</th><th>Type</th><th>Cat.</th><th>Line</th><th>Vessel visit</th><th>Transit state</th><th>Position</th><th class="num">Tons</th><th class="num">Days</th><th class="num">Storage so far</th><th>Holds</th><th>Open WI</th></tr>` +
+      <table class="grid"><tr><th>Unit</th><th>Type</th><th>Cat.</th><th>Line</th><th>Vessel visit</th><th>Train</th><th>Transit state</th><th>Position</th><th class="num">Tons</th><th class="num">Days</th><th class="num">Storage so far</th><th>Holds</th><th>Open WI</th></tr>` +
       units.map(u => `<tr class="${UI.unit === u.id ? 'sel' : ''}"><td>${unitLink(u.id)}</td><td>${u.iso} <span class="note">${ISO[u.iso]}</span></td><td class="c-${u.category}">${u.category}</td>
-        <td>${u.line}</td><td>${u.visit ? esc(visitById(u.visit)?.vessel || '') + ' ' + u.visit : '-'}</td><td>${u.transit || '-'}</td><td class="mono">${posLabel(u)}</td>
+        <td>${u.line}</td><td>${u.visit ? esc(visitById(u.visit)?.vessel || '') + ' ' + u.visit : '-'}</td><td>${u.train || '-'}</td><td>${u.transit || '-'}</td><td class="mono">${posLabel(u)}</td>
         <td class="num">${u.weight}</td><td class="num">${u.inTime != null ? daysIn(u) : '-'}</td><td class="num">${u.inTime != null ? money(storageDue(u)) : '-'}</td>
         <td>${u.holds.map(h => tag('st-HOLD', h) + ` <button class="sm" data-act="release" data-id="${u.id}">Release</button>`).join('')}</td><td>${u.wi || ''}</td></tr>`).join('') + '</table>';
   },
   gate() {
     const open = S.visits.filter(v => !['DEPARTED'].includes(v.phase));
-    const pickups = Object.values(S.units).filter(u => u.state === 'YARD' && !u.wi && u.category !== 'EXPORT');
+    const pickups = Object.values(S.units).filter(u => u.state === 'YARD' && !u.wi && u.category !== 'EXPORT' && !u.train);
     return header('Gate Transactions', 'Gate: truck visits, receive export / deliver import, hold checks',
       'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר. שעות השער כמו בנמל הדרום: ראשון עד חמישי 05:00-24:00, שישי 05:00-14:45, שבת סגור. משאית שמגיעה מחוץ לשעות נדחית, ורואים בטבלה מתי השער ייפתח.') +
       `<fieldset><legend>Receive (gate in)</legend><form class="row" data-form="gatein">
@@ -1246,24 +1363,82 @@ const VIEWS = {
       <table class="grid"><tr><th>Tx</th><th>Time</th><th>Truck</th><th>Type</th><th>Unit</th><th>Status</th><th>Reason / WI</th></tr>` +
       S.gate.slice().reverse().map(g => `<tr><td>${g.id}</td><td>${fmt(g.time)}</td><td class="mono">${g.truck}</td><td>${g.kind}</td><td>${g.unit ? unitLink(g.unit) : '-'}</td><td>${tag('st-' + g.status, g.status)}</td><td>${esc(g.reason || g.wi || '')}</td></tr>`).join('') + '</table>';
   },
+  rail() {
+    const head = header('Train Visits', 'Rail: train visit (a carrier visit like a vessel visit), railcars, rail work queues',
+      'רכבת היא כמו אונייה קטנה ביבשה. כל רכבת שמגיעה לנמל היא "ביקור רכבת" עם אותם שלבים כמו אונייה: בדרך (INBOUND), על המסילה (ARRIVED), עובדים עליה (WORKING), סיימו (COMPLETE), יצאה (DEPARTED). לרכבת יש קרונות, ובכל קרון מקום ל-40 רגל: מכולה אחת של 40 או שתיים של 20. ' +
+      'הרכבת מביאה מכולות ייצוא ממרכז הארץ (שיעלו אחר כך לאונייה), ולוקחת מכולות יבוא פנימה לארץ במקום משאיות. מכולת יבוא יוצאת ברכבת רק אם הזמינו אותה לרכבת (Book). Start work יוצר משימות: קודם פורקים את הרכבת, ואחר כך מעמיסים עליה. כל הזזה עושים עגורן הרכבת (RMG01) ועגורן החצר של הבלוק. מכולה עם עיכוב מכס לא עולה לרכבת, בדיוק כמו שהיא לא יוצאת בשער. על מסילת הנמל עומדת רכבת אחת בכל פעם, ובשבת רכבות לא נוסעות.');
+    const open = S.visits.filter(v => v.phase !== 'DEPARTED');
+    const form = `<fieldset><legend>Create train visit</legend><form class="row" data-form="train">
+      <label data-tip="שם הרכבת. אפשר לכתוב כל שם.">Train <input name="name" required maxlength="30" value="Inland shuttle ${S.seq.train + 1}"></label>
+      <label data-tip="בעוד כמה שעות הרכבת צפויה להגיע לנמל.">ETA in hours <input name="eta" type="number" min="0" max="240" value="1" style="width:60px"></label>
+      <label data-tip="כמה קרונות יש לרכבת. בכל קרון מקום ל-40 רגל: מכולה אחת של 40 או שתיים של 20.">Railcars <input name="cars" type="number" min="1" max="8" value="4" style="width:50px"></label>
+      <label data-tip="כמה מכולות ייצוא הרכבת מביאה מהארץ. הן ירדו לחצר ויחכו לאונייה שבחרת.">Export boxes on the train <input name="boxes" type="number" min="0" max="16" value="3" style="width:50px"></label>
+      <label data-tip="לאיזו אונייה מכולות הייצוא שעל הרכבת מיועדות.">For vessel <select name="visit">${open.map(v => `<option value="${v.id}">${v.id} ${esc(v.vessel)} (${v.phase})</option>`).join('')}</select></label>
+      <button data-tip="יוצר ביקור רכבת חדש ברשימה.">Create</button></form></fieldset>`;
+    const rows = S.trains.slice().reverse().map(t => {
+      const us = Object.values(S.units).filter(u => u.train === t.id);
+      let act = '';
+      if (t.phase === 'INBOUND') act = `<button class="sm" data-act="trainArrive" data-id="${t.id}">Arrive now</button>`;
+      if (t.phase === 'ARRIVED') act = `<button class="sm" data-act="trainStart" data-id="${t.id}">Start work</button>`;
+      if (['WORKING', 'COMPLETE'].includes(t.phase)) act = `<button class="sm" data-act="trainDepart" data-id="${t.id}" ${t.phase === 'WORKING' ? 'disabled' : ''}>Depart</button>`;
+      if (t.phase !== 'DEPARTED') act += ` <button class="sm" data-act="trainShow" data-id="${t.id}">Show cars</button>`;
+      return `<tr class="${UI.train === t.id ? 'sel' : ''}"><td>${t.id}</td><td>${esc(t.name)}</td><td>${tag('ph-' + t.phase, t.phase)}${t.wait ? ` <span class="note">${esc(t.wait)}</span>` : ''}</td><td>${fmt(t.eta)}</td>
+        <td>${t.ata != null ? fmt(t.ata) : ''}</td><td>${t.atd != null ? fmt(t.atd) : ''}</td><td class="num">${t.cars}</td>
+        <td class="num">${us.filter(u => u.state === 'ON_TRAIN').length}</td><td class="num">${us.filter(u => u.state === 'YARD').length}</td><td>${act}</td></tr>`;
+    }).join('');
+    const holder = trainHolder();
+    const siding = `<p class="siding">${SIDING}: ${holder ? `${esc(holder.name)} (${holder.id}) ${tag('ph-' + holder.phase, holder.phase)}` : '<span class="note">free</span>'}</p>`;
+    const table = `<fieldset><legend>Trains</legend>${siding}${S.trains.length ? `<table class="grid"><tr><th>Train visit</th><th>Train</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">Cars</th><th class="num">Boxes to unload</th><th class="num">Boxes to load</th><th>Actions</th></tr>${rows}</table>` : '<p class="note">No train visits.</p>'}</fieldset>`;
+    const live = S.trains.filter(t => t.phase !== 'DEPARTED');
+    const t = live.find(x => x.id === UI.train) || holder || live[0];
+    if (!t) return head + form + table;
+    UI.train = t.id;
+    // the consist: one box per car, the boxes on it drawn by size (meaning in text as well as colour)
+    const onCar = Object.values(S.units).filter(u => u.train === t.id && u.car && ['ON_TRAIN', 'LOADED', 'YARD'].includes(u.state));
+    const cars = Array.from({ length: t.cars }, (_, i) => {
+      const c = carNo(i + 1), all = onCar.filter(u => u.car === c);
+      // a car still carrying inbound boxes shows them; the imports planned for it go on after it is emptied
+      const inbound = all.filter(u => u.state === 'ON_TRAIN'), later = inbound.length ? all.filter(u => u.state === 'YARD') : [];
+      const here = inbound.length ? inbound : all;
+      const feet = here.reduce((n, u) => n + Number(sizeOf(u)), 0);
+      const boxes = here.map(u => `<span class="rbox s${sizeOf(u)} ${u.state === 'YARD' ? 'planned' : u.category}">${u.id.slice(4, 10)}<br>${sizeOf(u)}' ${u.state === 'YARD' ? 'plan' : u.category.slice(0, 3)}</span>`).join('') +
+        (feet < RAIL_CAR_FT ? `<span class="rbox free s${RAIL_CAR_FT - feet === 40 ? '40' : '20'}"></span>` : '');
+      const tip = `קרון ${c} של ${t.name}: ${here.length ? here.map(u => `${u.id} (${sizeOf(u)} רגל, ${u.state === 'ON_TRAIN' ? 'ייצוא שהגיע ברכבת ומחכה לפריקה' : u.state === 'LOADED' ? 'יבוא שכבר הועמס ויוצא לארץ' : 'יבוא שמתוכנן לעלות לכאן'})`).join(', ') : 'ריק'}. מקום פנוי: ${RAIL_CAR_FT - feet} רגל.` +
+        (later.length ? ` אחרי שיורידו את הייצוא, יעלו לקרון הזה: ${later.map(u => u.id).join(', ')}.` : '');
+      return `<div class="car" data-tip="${esc(tip)}"><b>Car ${c}${later.length ? ` &middot; then ${later.length} import${later.length > 1 ? 's' : ''}` : ''}</b><div class="cslots">${boxes}</div></div>`;
+    }).join('');
+    const booked = Object.values(S.units).filter(u => u.train === t.id && u.category === 'IMPORT');
+    const canBook = ['INBOUND', 'ARRIVED'].includes(t.phase);
+    const brow = u => `<tr><td>${unitLink(u.id)}</td><td>${u.iso} <span class="note">${ISO[u.iso]}</span></td><td class="mono">${posLabel(u)}</td><td>${u.holds.map(h => tag('st-HOLD', h)).join(' ')}</td><td>${u.wi || ''}</td>`;
+    const bookedRows = booked.map(u => brow(u) + `<td>${canBook ? `<button class="sm" data-act="trainUnbook" data-id="${t.id}:${u.id}">Unbook</button>` : ''}</td></tr>`).join('');
+    const ready = canBook ? Object.values(S.units).filter(railReady) : [];
+    const readyRows = ready.map(u => brow(u) + `<td><button class="sm" data-act="trainBook" data-id="${t.id}:${u.id}">Book to ${t.id}</button></td></tr>`).join('');
+    const cols = '<tr><th>Unit</th><th>Type</th><th>Position</th><th>Holds</th><th>Open WI</th><th>Actions</th></tr>';
+    return head + form + table +
+      `<fieldset><legend>Train consist &ndash; ${t.id} ${esc(t.name)} (${t.cars} cars)</legend><div class="baywrap"><div class="cars">${cars}</div></div>
+        <div class="legend"><span><i style="background:var(--exp)"></i>Export arriving by rail</span><span><i style="background:var(--imp)"></i>Import loaded, leaving by rail</span><span><i class="lg-rplan"></i>Import planned for this car</span></div></fieldset>
+      <fieldset><legend>Imports booked to leave by ${t.id}</legend>${booked.length ? `<table class="grid">${cols}${bookedRows}</table>` : '<p class="note">None booked.</p>'}</fieldset>` +
+      (canBook ? `<fieldset><legend>Imports in the yard that could leave by rail</legend>${ready.length ? `<table class="grid">${cols}${readyRows}</table>` : '<p class="note">None.</p>'}</fieldset>` : '');
+  },
   work() {
-    const groups = ['DISCHARGE', 'LOAD', 'GATE_IN', 'GATE_OUT'];
+    const groups = ['DISCHARGE', 'LOAD', 'GATE_IN', 'GATE_OUT', 'RAIL_DISCH', 'RAIL_LOAD'];
     const showDone = UI.showDone;
     return header('Work Queues', 'Work instructions in work queues, dispatched to the Equipment Control System (ECS)',
-      'כל תנועה של מכולה היא "הוראת עבודה". ההוראה מחכה בתור (PLANNED), המערכת שולחת אותה לציוד פנוי (DISPATCHED), והציוד מבצע (COMPLETE). פריקה צריכה עגורן רציף + רכב אוטונומי + עגורן חצר. אם חסר ציוד פנוי, ההוראה מחכה, ורואים למה בעמודה Note.') +
+      'כל תנועה של מכולה היא "הוראת עבודה". ההוראה מחכה בתור (PLANNED), המערכת שולחת אותה לציוד פנוי (DISPATCHED), והציוד מבצע (COMPLETE). פריקה צריכה עגורן רציף + רכב אוטונומי + עגורן חצר. פריקה והעמסה של רכבת צריכות עגורן רכבת + עגורן חצר. אם חסר ציוד פנוי, ההוראה מחכה, ורואים למה בעמודה Note.') +
       `<p><label><input type="checkbox" data-act="showDone" ${showDone ? 'checked' : ''}> Show completed</label></p>` +
+      '<p class="note">Rail moves need the rail crane RMG01 + a yard crane (no AGV): the siding is on the land side of the yard.</p>' +
       groups.map(g => {
         const list = S.wis.filter(w => w.kind === g && (showDone || w.status !== 'COMPLETE'));
         const counts = ['PLANNED', 'DISPATCHED', 'COMPLETE'].map(s => `${s.toLowerCase()} ${S.wis.filter(w => w.kind === g && w.status === s).length}`).join(', ');
         return `<fieldset><legend>Queue ${g} &ndash; ${counts}</legend>` + (list.length ? `<table class="grid"><tr><th>WI</th><th>Unit</th><th>From</th><th>To</th><th>Equipment</th><th>Status</th><th>Created</th><th>Done</th><th class="num">Rehandles</th><th>Note</th></tr>` +
-          list.map(w => `<tr><td>${w.id}</td><td>${unitLink(w.unit)}</td><td class="mono">${esc(w.from || (w.kind === 'LOAD' || w.kind === 'GATE_OUT' ? posLabel(S.units[w.unit]) : ''))}</td>
-            <td class="mono">${w.dest || (w.kind === 'LOAD' ? 'Vessel' : w.kind === 'GATE_OUT' ? 'Truck' : '')}</td><td>${w.eq.join(' + ')}</td><td>${tag('st-' + w.status, w.status)}</td>
+          list.map(w => `<tr><td>${w.id}</td><td>${unitLink(w.unit)}</td><td class="mono">${esc(w.from || (['LOAD', 'GATE_OUT', 'RAIL_LOAD', 'RAIL_DISCH'].includes(w.kind) ? posLabel(S.units[w.unit]) : ''))}</td>
+            <td class="mono">${esc(wiTo(w))}</td><td>${w.eq.join(' + ')}</td><td>${tag('st-' + w.status, w.status)}</td>
             <td>${fmt(w.created)}</td><td>${w.done != null ? fmt(w.done) : ''}</td><td class="num">${w.rehandles || ''}</td><td>${esc(w.note)}</td></tr>`).join('') + '</table>' : '<p class="note">Empty.</p>') + '</fieldset>';
       }).join('');
   },
   equipment() {
     return header('Equipment (ECS)', 'Equipment Control System; QC, AGV/AHT Manager, ASC Manager',
-      'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן, כמו בנמל הדרום מוקטן פי 4: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ו-2 עגורני חצר אוטומטיים (ASC) בכל בלוק, 8 בסך הכל. משימה בבלוק לוקחת את העגורן הפנוי מבין השניים. בשבת מכונה פנויה מסומנת SHABBAT ולא מקבלת עבודה.') +
+      'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן, כמו בנמל הדרום מוקטן פי 4: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ו-2 עגורני חצר אוטומטיים (ASC) בכל בלוק, 8 בסך הכל, ועוד עגורן רכבת אחד (RMG01) מעל מסילת הרכבת. משימה בבלוק לוקחת את העגורן הפנוי מבין השניים. בשבת מכונה פנויה מסומנת SHABBAT ולא מקבלת עבודה.') +
       `<table class="grid"><tr><th>Equipment</th><th>Kind</th><th>Status</th><th>Assigned to</th><th>Current WI</th><th class="num">Moves done</th></tr>` +
       S.eq.map(e => `<tr><td class="mono"><span class="eqname">${e.id}</span></td><td>${e.desc}</td><td>${eqStatus(e)}</td><td>${e.type === 'QC' ? (e.vessel ? esc(visitById(e.vessel)?.vessel || e.vessel) : 'free') : ''}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
   },
@@ -1304,6 +1479,7 @@ const VIEWS = {
       ['Yard View + Unit Inventory', '4 בלוקים, 12 ערימות בכל אחד, עד 4 קומות. כל מכולה עם מיקום מדויק.', 'N4 מנהל את מלאי החצר ואת מיקום כל מכולה (Yard).', 'חצר קטנה מאוד. אין משקל/גובה ערימה מורכבים.'],
       ['בחירת מקום אוטומטית', 'חוק אחד: מכולות ייצוא של אותה אונייה נערמות יחד.', 'מודול Expert Decking: תכנון חצר מבוסס חוקים שאפשר להגדיר.', 'רק חוק אחד וקבוע. אי אפשר עדיין להגדיר חוקים.'],
       ['Rehandles', 'אם המכולה לא למעלה, מזיזים את מה שמעליה וסופרים.', 'זו המטרה העיקרית של תכנון חצר טוב: פחות הזזות מיותרות.', '-'],
+      ['Train Visits', 'ביקור רכבת עם אותם 5 שלבים כמו אונייה, קרונות של 40 רגל, מסילה אחת לרכבת אחת. הרכבת מביאה ייצוא ולוקחת יבוא שהוזמן לה. פריקה לפני העמסה, עגורן רכבת + עגורן חצר לכל הזזה, עיכוב מכס חוסם עלייה לרכבת.', 'ב-N4 רכבת היא עוד סוג של Carrier Visit (כמו אונייה ומשאית), עם קרונות (railcars), תכנון קרונות ותורי עבודה לרכבת (Rail).', 'אין סוגי קרונות שונים, אין משקל מקסימלי לקרון, אין סדר קרונות לפי יעד, ואין הרכבה ופירוק של רכבות. המכונה שעובדת על המסילה בנמל הדרום לא ידועה, ולכן עגורן רכבת אחד.'],
       ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין תיאום תורים מראש (Appointments), אין מצלמות/OCR.'],
       ['Holds', 'עיכוב מכס חוסם יציאה בשער עד שמשחררים.', 'N4 תומך בעיכובים והרשאות על מכולות.', 'רק סוג עיכוב אחד.'],
       ['Work Queues', 'כל תנועה היא הוראת עבודה בתור לפי סוג.', 'N4 יוצר הוראות עבודה ושולח משימות למערכת בקרת הציוד (ECS).', 'כל תנועה לוקחת בדיוק 15 דקות.'],
@@ -1311,7 +1487,7 @@ const VIEWS = {
       ['Equipment (ECS)', 'QC, AGV, ושני ASC בכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
       ['Billing', 'תעריפים, חיובי הרמה ושער, אחסנה אחרי ימי חינם, חשבוניות, תשלום, זיכוי.', 'N4 Billing: חשבוניות, תשלומים וזיכויים.', 'אין מע"מ, מטבעות או חוזים לפי לקוח.'],
       ['טכנולוגיה', 'קובץ HTML אחד שרץ בדפדפן, בלי שרת.', 'N4 בנוי על J2EE, עם חוקים עסקיים שמוגדרים בנתונים (metadata) ולא בקוד.', 'אין משתמשים, הרשאות או מסד נתונים.'],
-      ['עוד לא קיים', 'רכבת, תיאום תורים, תכנון העמסה ביד, הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
+      ['עוד לא קיים', 'תיאום תורים למשאיות, הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
     ];
     return header('How it maps to N4', 'Concept map', 'הטבלה מסבירה מה כל מסך בסימולטור מדגים, מה הרעיון המקביל במערכת N4 האמיתית (לפי מקורות ציבוריים בלבד), ומה פישטנו. המראה הוא "בסגנון N4", לא העתק: המסכים האמיתיים לא פומביים.') +
       `<table class="grid map rtl"><tr><th>מסך</th><th>מה יש בסימולטור</th><th>ב-N4 האמיתי</th><th>מה פישטנו</th></tr>` +
@@ -1341,8 +1517,14 @@ function layoutPanel() {
     <div class="sea">Sea</div><div class="quays">${quays}</div>
     <div class="lane"><span class="mono">Quay cranes: ${qcs}</span><span class="mono">AGV lane: ${agvs}</span></div>
     <div class="lblocks">${blocks}</div>
-    <div class="rail">Rail siding &ndash; trains come in version 7</div></div>
+    <div class="rail">${railLine()}</div></div>
     <p class="note">Real port: 8 quay cranes and 30 automated stacking cranes. Here: 2 and 8.</p></fieldset>`;
+}
+// the siding: which train stands on it, how many wait, and the rail crane
+function railLine() {
+  const t = trainHolder(), waiting = S.trains.filter(x => x.wait).length, rmg = S.eq.find(e => e.type === 'RMG');
+  return `${SIDING}: ${t ? esc(t.name) + ' ' + tag('ph-' + t.phase, t.phase) : '<span class="note">free</span>'}${waiting ? ` <span class="note">(${waiting} waiting)</span>` : ''}` +
+    (rmg ? ` &nbsp; <span class="eqname mono">${rmg.id}</span> ${eqStatus(rmg)}` : '');
 }
 function visitTable(list, actions) {
   return `<table class="grid"><tr><th>Visit</th><th>Vessel</th><th>Line</th><th>Quay</th><th>Phase</th><th>ETA</th><th>ATA</th><th>ATD</th><th class="num">To discharge</th><th class="num">To load</th><th>QCs</th><th>Plan</th>${actions ? '<th>Actions</th>' : ''}</tr>` +
@@ -1367,7 +1549,7 @@ function visitTable(list, actions) {
     }).join('') + '</table>';
 }
 function unitSummary(units) {
-  const states = ['ON_VESSEL', 'AT_GATE', 'YARD', 'LOADED', 'DEPARTED'];
+  const states = ['ON_VESSEL', 'ON_TRAIN', 'AT_GATE', 'YARD', 'LOADED', 'DEPARTED'];
   return `<table class="grid"><tr><th>Category</th>${states.map(s => `<th class="num">${s}</th>`).join('')}</tr>` +
     ['IMPORT', 'EXPORT', 'EMPTY'].map(c => `<tr><td class="c-${c}">${c}</td>${states.map(s => `<td class="num">${units.filter(u => u.category === c && u.state === s).length || ''}</td>`).join('')}</tr>`).join('') + '</table>';
 }
@@ -1388,7 +1570,7 @@ const ACTIONS = {
     else autoTimer = setInterval(() => { cycle(); save(); render(); }, 700);
   },
   save: () => { save(); flash('ok', 'Saved in this browser.'); },
-  reset: () => { if (autoTimer) ACTIONS.auto(); fresh(); UI.stack = null; UI.unit = null; flash('ok', 'Demo terminal reset.'); },
+  reset: () => { if (autoTimer) ACTIONS.auto(); fresh(); UI.stack = null; UI.unit = null; UI.train = null; flash('ok', 'Demo terminal reset.'); },
   arrive: id => { const v = visitById(id); if (!arrive(v)) flash('err', `${v.wait}. It can berth when that vessel departs.`); },
   start: id => startWork(visitById(id)),
   cranes: id => {
@@ -1423,6 +1605,24 @@ const ACTIONS = {
     flash('ok', `${e.id} now works for ${v.vessel}` + (e.status === 'BUSY' ? ', after it finishes its current move.' : '.'));
   },
   depart: id => depart(visitById(id)),
+  trainArrive: id => { const t = trainById(id); if (!trainArrive(t)) flash('err', `${t.wait}. It goes onto the siding when it can.`); },
+  trainStart: id => { const t = trainById(id); if (t.phase === 'ARRIVED') trainStart(t); },
+  trainDepart: id => { const t = trainById(id); if (t.phase === 'COMPLETE') trainDepart(t); },
+  trainShow: id => { UI.train = id; },
+  trainBook: id => {
+    const [tid, uid] = id.split(':'), t = trainById(tid), u = S.units[uid];
+    if (!['INBOUND', 'ARRIVED'].includes(t.phase) || !railReady(u)) return;
+    u.train = t.id;
+    log('RAIL', `${u.id} booked to leave by ${t.name} (${t.id})`);
+    flash(u.holds.length ? 'err' : 'ok', `${u.id} will leave by train ${t.id}.` + (u.holds.length ? ` It has a ${u.holds.join(', ')} hold: it will not be loaded until the hold is released.` : ''));
+  },
+  trainUnbook: id => {
+    const [tid, uid] = id.split(':'), t = trainById(tid), u = S.units[uid];
+    if (!['INBOUND', 'ARRIVED'].includes(t.phase) || u.train !== t.id || u.wi) return;
+    u.train = null; u.car = null;
+    log('RAIL', `${u.id} no longer booked to ${t.name} (${t.id})`);
+    flash('ok', `${u.id} stays in the yard and can leave by truck.`);
+  },
   stack: id => { UI.stack = UI.stack === id ? null : id; },
   unitYard: id => { UI.page = 'yard'; UI.stack = S.units[id].pos; },
   unitList: () => { UI.unit = null; UI.ufv = null; },
@@ -1524,6 +1724,17 @@ const FORMS = {
     if (other) flash('err', `Visit ${v.id} created, but quay ${v.quay} is booked by ${other.vessel} at that time, so ${v.vessel} would wait at anchor. Open Berth Schedule to move it to the other quay or change its ETA.`);
     else flash('ok', `Visit ${v.id} created. Its window is on the Berth Schedule.`);
   },
+  train: f => {
+    const v = visitById(f.visit), boxes = Math.min(16, Math.max(0, Number(f.boxes) | 0));
+    if (boxes && (!v || v.phase === 'DEPARTED')) { flash('err', 'Export boxes on a train need an open vessel visit.'); return; }
+    const t = addTrain(f.name.trim() || 'Unnamed train', Math.round(Number(f.eta) * 60), Math.min(8, Math.max(1, Number(f.cars) | 0)), boxes, v?.id);
+    const n = Object.values(S.units).filter(u => u.train === t.id).length;
+    log('RAIL', `Train visit ${t.id} ${t.name} created, ETA ${fmt(t.eta)}, ${n} export(s) on board`);
+    const other = trainHolder();
+    flash('ok', `Train visit ${t.id} created with ${n} export box(es)` + (n < boxes ? ` (only ${n} fit on ${t.cars} cars)` : '') + '.' +
+      (other && t.eta <= S.clock + 60 ? ` The siding is taken by ${other.name}, so it will wait until that train departs.` : '') + ' Book imports to it below.');
+    UI.train = t.id;
+  },
   gatein: f => {
     if (!isGateOpen(S.clock)) return gateClosed('RECEIVE ' + f.kind, null);
     if (f.kind === 'EXPORT' && !f.visit) { flash('err', 'Export needs an open vessel visit.'); return; }
@@ -1582,7 +1793,7 @@ function tipText(el) {
   return infoTip(el);
 }
 // every heading, column, status tag and screen part explains itself: looked up by its text (exact, else longest prefix)
-const INFO_SEL = 'th, .tag, legend, .kpi, .legend span, h3, .lblock, .quay, .sea, .rail, .lane > span, .eqname, .pstatus, .pick, .tstep, .blbl, .bbar, .bday, .btick, .bshab, .bnow';
+const INFO_SEL = 'th, .tag, legend, .kpi, .legend span, h3, .lblock, .quay, .sea, .rail, .siding,.lane > span, .eqname, .pstatus, .pick, .tstep, .blbl, .bbar, .bday, .btick, .bshab, .bnow';
 function infoTip(el) {
   const txt = (el.matches('.kpi') ? el.querySelector('span').textContent : el.textContent).trim();
   const dict = INFO[el.matches('th') ? 'th' : el.matches('.tag') ? 'tag' : 'part'];
@@ -1664,7 +1875,13 @@ const INFO = {
     'Items': 'כמה חיובים יש בחשבונית.',
     'Total': 'הסכום הכולל של החשבונית.',
     'Charge': 'מספר החיוב: שורה אחת של כסף שהנמל גובה.',
-    'Event': 'על מה החיוב: הרמה מאונייה (LIFT_DISCH), הרמה לאונייה (LIFT_LOAD), שער (GATE_IN, GATE_OUT), אחסנה (STORAGE) או זיכוי (CREDIT).',
+    'Event': 'על מה החיוב: הרמה מאונייה (LIFT_DISCH), הרמה לאונייה (LIFT_LOAD), הרמה מרכבת או לרכבת (LIFT_RAIL), שער (GATE_IN, GATE_OUT), אחסנה (STORAGE) או זיכוי (CREDIT).',
+    'ON_TRAIN': 'כמה מכולות עדיין על קרון של רכבת ומחכות לפריקה.',
+    'Train': 'הרכבת שהמכולה עליה, או שהיא מוזמנת לצאת בה (T001, T002...). - = אין רכבת.',
+    'Train visit': 'מספר ביקור הרכבת. כל פעם שרכבת מגיעה לנמל זה ביקור חדש, עם מספר משלו (T001, T002...).',
+    'Cars': 'כמה קרונות יש לרכבת. בכל קרון מקום ל-40 רגל.',
+    'Boxes to unload': 'כמה מכולות עוד על הרכבת ומחכות שיורידו אותן לחצר.',
+    'Boxes to load': 'כמה מכולות יבוא מוזמנות לרכבת ועוד מחכות בחצר לעלות עליה.',
     'Detail': 'פירוט קצר של החיוב.',
     'Amount': 'הסכום בדולרים. סכום במינוס = זיכוי שמחזירים ללקוח.',
     '': 'כאן אפשר לתת זיכוי על שורה.',
@@ -1677,11 +1894,11 @@ const INFO = {
     'IDLE': 'פנויה: המכונה מחכה למשימה.',
     'BUSY': 'עסוקה: המכונה מבצעת עכשיו הוראת עבודה.',
     'SHABBAT': 'שבת: המכונה לא מקבלת עבודה חדשה עד מוצאי שבת 20:00.',
-    'INBOUND': 'האונייה בדרך לנמל.',
-    'ARRIVED': 'האונייה ליד הרציף, ועוד לא התחילו לעבוד עליה. השלב הבא: Start work.',
-    'WORKING': 'פורקים ומעמיסים את האונייה עכשיו.',
-    'COMPLETE': 'כל העבודה הסתיימה. האונייה יכולה לצאת (Depart).',
-    'DEPARTED': 'האונייה יצאה מהנמל.',
+    'INBOUND': 'האונייה (או הרכבת) בדרך לנמל.',
+    'ARRIVED': 'האונייה ליד הרציף (או הרכבת על המסילה), ועוד לא התחילו לעבוד עליה. השלב הבא: Start work.',
+    'WORKING': 'פורקים ומעמיסים את האונייה (או הרכבת) עכשיו.',
+    'COMPLETE': 'כל העבודה הסתיימה. האונייה (או הרכבת) יכולה לצאת (Depart).',
+    'DEPARTED': 'האונייה (או הרכבת) יצאה מהנמל.',
     'PLANNED': 'ההוראה מחכה בתור למכונות פנויות.',
     'DISPATCHED': 'ההוראה נשלחה למכונות, והן מבצעות אותה עכשיו.',
     'REJECTED': 'המשאית נדחתה בשער. הסיבה כתובה בעמודה שלידה.',
@@ -1727,7 +1944,18 @@ const INFO = {
     'Block B': 'בלוק B בחצר, למכולות ייצוא. כתוב כמה מכולות יש בו מתוך כמה מקומות, ואילו עגורני חצר עובדים בו.',
     'Block C': 'בלוק C בחצר, למכולות יבוא. כתוב כמה מכולות יש בו מתוך כמה מקומות, ואילו עגורני חצר עובדים בו.',
     'Block D': 'בלוק D בחצר, למכולות יבוא וריקות. כתוב כמה מכולות יש בו מתוך כמה מקומות, ואילו עגורני חצר עובדים בו.',
-    'Rail siding': 'מסילת רכבת שמגיעה לנמל. רכבות יתווספו בגרסה 7.',
+    'Rail siding': 'מסילת הרכבת של הנמל (בצד היבשה של החצר). כתוב איזו רכבת עומדת עליה ובאיזה שלב, או free אם היא פנויה, ומה עושה עגורן הרכבת RMG01. על המסילה עומדת רכבת אחת בכל פעם.',
+    'RMG': 'עגורן הרכבת (RMG, עגורן על מסילה): מרים מכולות מהקרונות לחצר ומהחצר לקרונות. התווית לידו אומרת אם הוא פנוי, עסוק או בשבת.',
+    'Create train visit': 'כאן יוצרים רכבת חדשה שתגיע לנמל: שם, מתי תגיע, כמה קרונות, וכמה מכולות ייצוא היא מביאה ולאיזו אונייה.',
+    'Trains': 'כל ביקורי הרכבת, ומי עומד עכשיו על מסילת הנמל. השורה המודגשת היא הרכבת שמוצגת למטה.',
+    'Train consist': 'הרכב הרכבת (consist): ציור של הקרונות לפי הסדר, ומה עומד על כל קרון. עמידה על קרון מסבירה מה עליו.',
+    'Imports booked to leave by': 'מכולות יבוא שהוזמנו לצאת מהנמל ברכבת הזאת במקום במשאית. מכולה עם HOLD לא תעלה עד שישחררו את העיכוב.',
+    'Imports in the yard that could leave by rail': 'מכולות יבוא שעומדות בחצר ואפשר להזמין לרכבת הזאת (כפתור Book). אפשר להזמין רק לפני שמתחילים לעבוד על הרכבת.',
+    'Export arriving by rail': 'ירוק = מכולת ייצוא שהגיעה על הרכבת ומחכה שיורידו אותה לחצר.',
+    'Import loaded, leaving by rail': 'כתום = מכולת יבוא שכבר הועמסה על הקרון ותצא עם הרכבת.',
+    'Import planned for this car': 'מקווקו = מכולת יבוא שמתוכננת לעלות לקרון הזה, והיא עוד בחצר.',
+    'Queue RAIL_DISCH': 'תור פריקת הרכבת: הוראות להוריד מכולות מקרון לחצר, בעגורן הרכבת ובעגורן החצר.',
+    'Queue RAIL_LOAD': 'תור העמסת הרכבת: הוראות להעלות מכולות יבוא מהחצר לקרון. הן מחכות עד שהרכבת התרוקנה, ומכולה בעיכוב מחכה לשחרור.',
     'Export': 'צבע ירוק = מכולת ייצוא, שתעלה לאונייה.',
     'Import': 'צבע כתום = מכולת יבוא, שירדה מאונייה ותצא במשאית.',
     'Empty': 'צבע אפור = מכולה ריקה.',
