@@ -100,6 +100,11 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 .grid td.num,.grid th.num{text-align:right}
 .mono{font-family:"Lucida Console",Consolas,monospace}
 .tag{display:inline-block;padding:0 5px;border:1px solid #0003;font-size:11px;line-height:15px}
+.st-BOOKED{background:#fff3c4}.st-USED{background:#d4efd4}.st-MISSED{background:#f7c9c9}.st-CANCELLED{background:#eee}
+.aslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:4px}
+.aslot{display:flex;flex-direction:column;align-items:stretch;gap:2px;font-size:11px;padding:3px 4px;text-align:left}
+.aslot.on{outline:2px solid #1d4f91}.aslot.afull{background:#f7c9c9;color:#600}
+.abar{display:block;height:6px;background:#fff;border:1px solid #999}.abar i{display:block;height:100%;background:#4a7bc0}.afull .abar i{background:#b33}
 .st-PLANNED{background:#fff3c4}.st-DISPATCHED{background:#c8dcff}.st-COMPLETE{background:#d4efd4}
 .st-REJECTED,.st-HOLD{background:#f7c9c9}.st-DRAFT{background:#eee}.st-FINAL{background:#c8dcff}.st-PAID{background:#d4efd4}
 .ph-INBOUND{background:#eee}.ph-ARRIVED{background:#fff3c4}.ph-WORKING{background:#c8dcff}.ph-COMPLETE{background:#d4efd4}.ph-DEPARTED{background:#ddd;color:#666}
@@ -201,8 +206,10 @@ const BLOCKS = [
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
 // shown top right; bump on every push: <roadmap version>.<fix number inside it>
-const APP_VERSION = 'v7.0', APP_DATE = '27-10-2026';
-const STATE_VER = 7;                             // bump when the saved shape changes, and add a MIGRATE step
+const APP_VERSION = 'v8.0', APP_DATE = '27-10-2026';
+const STATE_VER = 8;                             // bump when the saved shape changes, and add a MIGRATE step
+// truck appointments: one-hour slots; a truck is on time from APPT_GRACE minutes before its hour to APPT_GRACE after it ends
+const APPT_GRACE = 30, APPT_KINDS = { 'RECEIVE EXPORT': 'Bring an export', 'RECEIVE EMPTY': 'Return an empty', DELIVER: 'Pick up an import' };
 // each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
 const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
 const PORTS = { GRPIR: 'Piraeus', ITGOA: 'Genoa', ESVLC: 'Valencia', TRMER: 'Mersin', NLRTM: 'Rotterdam', EGPSD: 'Port Said', GBFXT: 'Felixstowe' };
@@ -216,7 +223,7 @@ const PAGES = [
   ['Terminal', [['overview', 'Overview']]],
   ['Vessel', [['vessels', 'Vessel Visits'], ['berth', 'Berth Schedule'], ['stowage', 'Stowage Plan']]],
   ['Yard', [['yard', 'Yard View'], ['inventory', 'Unit Inventory'], ['inspector', 'Unit Inspector']]],
-  ['Gate', [['gate', 'Gate Transactions']]],
+  ['Gate', [['gate', 'Gate Transactions'], ['appts', 'Truck Appointments']]],
   ['Rail', [['rail', 'Train Visits']]],
   ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
   ['Billing', [['billing', 'Charges & Invoices']]],
@@ -232,6 +239,7 @@ const PAGE_TIPS = {
   inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן משחררים עיכוב מכס.',
   inspector: 'מכולה אחת לעומק: מי היא, כל הביקורים שלה בנמל, ושלבי החיים של כל ביקור.',
   gate: 'השער: משאיות שמביאות מכולות, או באות לקחת מכולות.',
+  appts: 'תורים למשאיות: כל משאית מזמינה מראש שעה להגיע לשער, ובכל שעה יש מקום רק לכמה משאיות.',
   rail: 'הרכבת: רכבות משא שמביאות מכולות ייצוא מהארץ ולוקחות מכולות יבוא פנימה לארץ.',
   work: 'תורי העבודה: כל הזזה של מכולה היא משימה שמחכה לציוד פנוי.',
   equipment: 'הציוד: עגורנים ורכבים. רואים מי עסוק ובמה.',
@@ -248,7 +256,8 @@ const SCREEN_TIPS = {
   yard: 'מה רואים: מפת החצר, בלוק אחרי בלוק, וכל ערימה של מכולות לפי צבע הסוג. מה אפשר לעשות: ללחוץ על ערימה ולראות אילו מכולות בתוכה, מלמעלה למטה.',
   inspector: 'מה רואים: מכולה אחת לעומק. למעלה המכולה עצמה (מספר, בעלים, סוג: לא משתנים). מתחת הביקורים שלה (UFV): כל פעם שהייתה בנמל, איך הגיעה ואיך יצאה. מתחת שבעת שלבי החיים של הביקור שנבחר, עם השעה של כל שלב, ואז ההזזות והחיובים של אותו ביקור. מה אפשר לעשות: לחפש מכולה, לבחור ביקור (Show), ולקפוץ למקום שלה בחצר.',
   inventory: 'מה רואים: רשימה של כל המכולות, עם הסוג, המיקום, המשקל, ימי האחסנה והעיכובים. מה אפשר לעשות: לשחרר עיכוב מכס, ולהציג גם מכולות שכבר יצאו.',
-  gate: 'מה רואים: כל המשאיות שהגיעו לשער, ומה קרה לכל אחת (התקבלה, או נדחתה ולמה, למשל עיכוב מכס או שער סגור). מה אפשר לעשות: להכניס משאית עם מכולה, או לשלוח משאית לקחת מכולה מהחצר. השער פתוח א\'-ה\' 05:00-24:00, שישי 05:00-14:45, שבת סגור.',
+  gate: 'מה רואים: כל המשאיות שהגיעו לשער, ומה קרה לכל אחת (התקבלה, או נדחתה ולמה, למשל אין תור, הגיעה מוקדם או מאוחר מדי, עיכוב מכס או שער סגור), ואיזה תור כל משאית ניצלה. מה אפשר לעשות: להכניס משאית עם מכולה, או לשלוח משאית לקחת מכולה מהחצר. כל משאית צריכה תור מראש (מסך Truck Appointments). השער פתוח א\'-ה\' 05:00-24:00, שישי 05:00-14:45, שבת סגור.',
+  appts: 'מה רואים: השעות הקרובות שבהן השער פתוח, וכמה משאיות כבר הזמינו תור לכל שעה מתוך כמה מותר. מתחת: כל התורים והמצב של כל אחד (מוזמן, נוצל, הוחמץ, בוטל). מה אפשר לעשות: להזמין תור למשאית (להביא ייצוא, להחזיר ריקה, או לקחת יבוא), לבטל תור, ולשנות את החוקים: האם השער דורש תור, וכמה משאיות מותר בכל שעה.',
   rail: 'מה רואים: כל ביקורי הרכבת (באיזה שלב כל רכבת, כמה מכולות לפרוק ממנה וכמה להעמיס עליה), את מסילת הנמל (מי עומד עליה עכשיו), ציור של הקרונות של הרכבת שנבחרה עם המכולות שעליהם, ורשימת מכולות היבוא שמוזמנות לצאת ברכבת. מה אפשר לעשות: ליצור רכבת חדשה, להביא אותה למסילה, להתחיל עבודה (פריקה ואז העמסה), לשלוח אותה לדרך, ולהזמין מכולת יבוא לרכבת או לבטל הזמנה.',
   work: 'מה רואים: תורי העבודה. כל הזזה של מכולה היא משימה שמחכה, נשלחת לציוד או הסתיימה. מה אפשר לעשות: להציג גם משימות שהסתיימו. המשימות עצמן זזות כשמריצים סבבים.',
   equipment: 'מה רואים: כל המכונות בנמל (2 עגורני רציף, 4 רכבים אוטונומיים, 8 עגורני חצר, שניים בכל בלוק, ועגורן רכבת אחד), מי עסוק, באיזו משימה, וכמה הזזות עשה. בשבת מכונה פנויה מסומנת SHABBAT. מה אפשר לעשות: רק להסתכל.',
@@ -276,6 +285,9 @@ const TIPS = {
   trainShow: 'מציג את הקרונות של הרכבת הזאת ואת המכולות שמוזמנות לה.',
   trainBook: 'מזמין את מכולת היבוא הזאת לצאת מהנמל ברכבת הזאת, במקום במשאית.',
   trainUnbook: 'מבטל את ההזמנה: המכולה תישאר בחצר, ותוכל לצאת במשאית.',
+  apptSlot: el => { const m = Number(el.dataset.id), n = apptUsed(m), cap = S.apptRule.cap;
+    return `השעה ${fmt(m).slice(-5)}-${fmt(m + 60).slice(-5)} בשער: ${n} משאיות הזמינו תור מתוך ${cap} מקומות. ` + (n >= cap ? 'השעה מלאה, אי אפשר להזמין אליה עוד משאית.' : 'לחיצה בוחרת את השעה הזאת בטופס ההזמנה למטה.'); },
+  apptCancel: 'מבטל את התור. המקום בשעה הזאת מתפנה למשאית אחרת.',
   stowOpen: 'פותח את תוכנית ההעמסה של האונייה הזאת: איזו מכולה עולה לאיזה מקום באונייה.',
   stowVisit: 'מציג את תוכנית ההעמסה של האונייה הזאת.',
   bay: el => `מציג את bay ${el.dataset.id}: חתך אחד של האונייה. ${SHIP.bays[el.dataset.id] === '40' ? "ב-bay הזה עומדות רק מכולות של 40 רגל." : "ב-bay הזה עומדות רק מכולות של 20 רגל."}`,
@@ -548,8 +560,8 @@ function flash(type, text) { UI.msg = { type, text }; }
 function fresh() {
   S = {
     ver: STATE_VER, clock: 0, auto: false, workOn: true, rng: 20261022,
-    seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0 },
-    units: {}, stacks: {}, visits: [], trains: [], wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
+    seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0, appt: 0 },
+    units: {}, stacks: {}, visits: [], trains: [], appts: [], apptRule: { required: true, cap: 3 }, wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
     stats: { rehandles: 0, moves: 0 },
     tariff: { lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 },
   };
@@ -579,6 +591,9 @@ function fresh() {
   // (imports 3-5, one of them under customs hold; added last so the seeds above stay the same)
   const t1 = addTrain('Inland shuttle 1', 180, 4, 4, v2.id);
   Object.values(S.units).filter(u => u.category === 'IMPORT' && u.state === 'YARD').slice(3, 6).forEach(u => { u.train = t1.id; });
+  // truck appointments (version 8): a pickup booked for Thu 07:00-08:00 and an export drop-off for Thu 09:00-10:00
+  addAppt('DELIVER', 60, Object.values(S.units).find(u => u.category === 'IMPORT' && u.state === 'YARD' && !u.holds.length && !u.train).id);
+  addAppt('RECEIVE EXPORT', 180, null);
   log('SYSTEM', 'Demo terminal created. ' + v1.vessel + ' due ' + fmt(v1.eta) + ', ' + v2.vessel + ' due ' + fmt(v2.eta) + ', train ' + t1.name + ' due ' + fmt(t1.eta) + '.');
   syncTransit();
 }
@@ -623,6 +638,11 @@ function load() {
 }
 // one step per saved version; each step brings a save up by one version
 const MIGRATE = {
+  7(s) {   // version 7 -> 8: truck appointments. No appointments yet, and from now on the gate asks for one
+    s.appts = s.appts || [];
+    s.apptRule = s.apptRule || { required: true, cap: 3 };
+    s.seq.appt = s.seq.appt || 0;
+  },
   6(s) {   // version 6 -> 7: rail. No trains yet; the rail crane joins the equipment
     s.trains = s.trains || [];
     s.seq.train = s.seq.train || 0;
@@ -675,7 +695,7 @@ function normalize(s) {
     ['eq', 'visits', 'wis', 'charges', 'invoices', 'gate', 'log'].every(k => Array.isArray(s[k]));
   if (!ok) throw new Error('unknown format');
   // fill counters and settings a hand-edited or older save may lack, and refuse positions that point nowhere
-  s.seq = Object.assign({ cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0 }, s.seq);
+  s.seq = Object.assign({ cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0, appt: 0 }, s.seq);
   s.stats = Object.assign({ rehandles: 0, moves: 0 }, s.stats);
   s.tariff = Object.assign({ lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 }, s.tariff);
   if (Object.values(s.units).some(u => u.pos && !s.stacks[u.pos])) throw new Error('a unit is in a yard slot that does not exist');
@@ -834,6 +854,10 @@ function complete(wi) {
 function cycle() {
   S.clock += CYCLE_MIN;
   S.wis.filter(w => w.status === 'DISPATCHED').forEach(complete);
+  // a booked truck that never came by the end of its window has missed its appointment
+  S.appts.filter(a => a.status === 'BOOKED' && S.clock > a.slot + 60 + APPT_GRACE).forEach(a => {
+    a.status = 'MISSED'; log('GATE', `Appointment ${a.id} missed: ${a.truck} did not come by ${fmt(a.slot + 60 + APPT_GRACE)}`);
+  });
   // vessel arrivals by ETA (a vessel whose quay is taken waits)
   S.visits.filter(v => v.phase === 'INBOUND' && v.eta <= S.clock).forEach(v => arrive(v));
   S.trains.filter(t => t.phase === 'INBOUND' && t.eta <= S.clock).forEach(t => trainArrive(t));
@@ -1131,6 +1155,8 @@ const VIEWS = {
         const other = QUAYS.find(q => q.id !== v.quay).id;
         act += ` <button class="sm" data-act="moveQuay" data-id="${v.id}">Move to quay ${other}</button> <button class="sm" data-act="etaShift" data-id="${v.id}:-60">ETA -1h</button> <button class="sm" data-act="etaShift" data-id="${v.id}:60">ETA +1h</button>`;
       }
+      if (v.phase === 'ARRIVED') act += ` <button class="sm" data-act="start" data-id="${v.id}">Start work</button>`;
+      if (v.phase === 'WORKING' || v.phase === 'COMPLETE') act += ` <button class="sm" data-act="depart" data-id="${v.id}" ${v.phase === 'WORKING' ? 'disabled title="Finish work first"' : ''}>Depart</button>`;
       return `<tr><td>${v.id}</td><td>${esc(v.vessel)}</td><td>${v.quay}</td><td>${tag('ph-' + v.phase, v.phase)}${v.wait ? ` <span class="note">${esc(v.wait)}</span>` : ''}</td><td>${fmt(b.from)}</td><td>${fmt(b.to)}${b.est ? ' <span class="note">(est.)</span>' : ''}</td>
         <td class="num">${visitMoves(v)}</td><td>${qcsOf(v).length} / ${v.cranes}</td><td>${conf ? tag('st-HOLD', 'CONFLICT') + ' <span class="note">with ' + esc(conf.vessel) + '</span>' : '-'}</td><td>${act}</td></tr>`;
     }).join('');
@@ -1347,21 +1373,51 @@ const VIEWS = {
   gate() {
     const open = S.visits.filter(v => !['DEPARTED'].includes(v.phase));
     const pickups = Object.values(S.units).filter(u => u.state === 'YARD' && !u.wi && u.category !== 'EXPORT' && !u.train);
+    const recv = S.appts.filter(a => a.status === 'BOOKED' && a.kind !== 'DELIVER').sort((a, b) => a.slot - b.slot);
+    const pickAppt = u => S.appts.find(a => a.status === 'BOOKED' && a.unit === u.id);
     return header('Gate Transactions', 'Gate: truck visits, receive export / deliver import, hold checks',
-      'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר. שעות השער כמו בנמל הדרום: ראשון עד חמישי 05:00-24:00, שישי 05:00-14:45, שבת סגור. משאית שמגיעה מחוץ לשעות נדחית, ורואים בטבלה מתי השער ייפתח.') +
+      'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. כל משאית צריכה תור (Appointment) שהוזמן מראש במסך Truck Appointments: משאית בלי תור, או שהגיעה יותר מחצי שעה לפני או אחרי השעה שלה, נדחית. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר. שעות השער כמו בנמל הדרום: ראשון עד חמישי 05:00-24:00, שישי 05:00-14:45, שבת סגור. משאית שמגיעה מחוץ לשעות נדחית, ורואים בטבלה מתי השער ייפתח.') +
       `<fieldset><legend>Receive (gate in)</legend><form class="row" data-form="gatein">
         <label data-tip="ייצוא = מכולה מלאה שתעלה על אונייה. ריקה = מכולה ריקה שחוזרת לנמל.">Type <select name="kind"><option value="EXPORT">Export full, booked to vessel</option><option value="EMPTY">Empty return</option></select></label>
         <label data-tip="לאיזו אונייה מכולת הייצוא מיועדת.">Vessel visit <select name="visit">${open.map(v => `<option value="${v.id}">${v.id} ${esc(v.vessel)} (${v.phase})</option>`).join('')}</select></label>
         <label data-tip="לאיזה נמל מכולת הייצוא נוסעת: תחנה 1, 2 או 3 במסלול של האונייה. תחנה 3 היא האחרונה, ולכן מכולה כזו תעמוד למטה באונייה. למכולה ריקה זה לא משנה.">POD <select name="pod">${[1, 2, 3].map(p => `<option value="${p}">Stop ${p}${open[0] ? ' (' + open.map(v => v.id + ' ' + podCode(v, p)).join(', ') + ')' : ''}</option>`).join('')}</select></label>
         <label data-tip="מכולה שכבר הייתה בנמל ויצאה, וחוזרת עכשיו ריקה: בחר אותה, והיא תחזור עם אותו מספר ותקבל ביקור חדש. New number = מכולה שלא הייתה כאן. רק ל-Empty return.">Returning container <select name="ret"><option value="">New number</option>${Object.values(S.units).filter(u => u.state === 'DEPARTED').map(u => `<option value="${u.id}">${u.id} (${u.line}, left ${fmt(curVisit(u)?.outTime ?? u.outTime ?? 0)})</option>`).join('')}</select></label>
+        <label data-tip="התור שהמשאית הזמינה מראש: מספר התור, מספר המשאית ובאיזו שעה. No appointment = משאית שבאה בלי תור, והשער ידחה אותה (אלא אם ביטלו את החובה במסך Truck Appointments).">Appointment <select name="appt">${recv.map(a => `<option value="${a.id}">${a.id} ${a.truck} ${APPT_KINDS[a.kind]}, ${slotLabel(a.slot).slice(4)}</option>`).join('')}<option value="">No appointment</option></select></label>
         <label data-tip="חברת הספנות שהמכולה שייכת לה.">Line <select name="line">${Object.keys(LINES).map(l => `<option>${l}</option>`).join('')}</select></label>
         <label data-tip="סוג המכולה לפי תקן בינלאומי: 20 רגל רגילה, 40 רגל גבוהה, או 20 רגל מקוררת.">ISO <select name="iso">${Object.keys(ISO).map(i => `<option value="${i}">${i} ${ISO[i]}</option>`)}</select></label>
         <button data-tip="המשאית נכנסת עם המכולה, ונוצרת משימה לעגורן החצר להוריד אותה.">Gate in</button></form></fieldset>
       <fieldset><legend>Deliver (gate out)</legend><form class="row" data-form="gateout">
-        <label data-tip="איזו מכולה המשאית באה לקחת. מכולה עם [HOLD] תידחה בשער.">Unit to pick up <select name="unit">${pickups.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.holds.length ? '[HOLD]' : ''} @ ${posLabel(u)}</option>`).join('')}</select></label>
+        <label data-tip="איזו מכולה המשאית באה לקחת. מכולה עם [HOLD] תידחה בשער. ליד כל מכולה כתוב אם יש למשאית שלה תור (appt ומספר) או שאין (no appointment), ואז השער ידחה אותה.">Unit to pick up <select name="unit">${pickups.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.holds.length ? '[HOLD]' : ''} @ ${posLabel(u)} ${pickAppt(u) ? '- appt ' + pickAppt(u).id + ' ' + fmt(pickAppt(u).slot).slice(-5) : '- no appointment'}</option>`).join('')}</select></label>
         <button data-tip="השער בודק את המכולה. אם אין עיכוב, נוצרת משימה להוציא אותה מהחצר למשאית." ${pickups.length ? '' : 'disabled'}>Gate out</button></form></fieldset>
-      <table class="grid"><tr><th>Tx</th><th>Time</th><th>Truck</th><th>Type</th><th>Unit</th><th>Status</th><th>Reason / WI</th></tr>` +
-      S.gate.slice().reverse().map(g => `<tr><td>${g.id}</td><td>${fmt(g.time)}</td><td class="mono">${g.truck}</td><td>${g.kind}</td><td>${g.unit ? unitLink(g.unit) : '-'}</td><td>${tag('st-' + g.status, g.status)}</td><td>${esc(g.reason || g.wi || '')}</td></tr>`).join('') + '</table>';
+      <table class="grid"><tr><th>Tx</th><th>Time</th><th>Truck</th><th>Appt</th><th>Type</th><th>Unit</th><th>Status</th><th>Reason / WI</th></tr>` +
+      S.gate.slice().reverse().map(g => `<tr><td>${g.id}</td><td>${fmt(g.time)}</td><td class="mono">${g.truck}</td><td>${g.appt || '-'}</td><td>${g.kind}</td><td>${g.unit ? unitLink(g.unit) : '-'}</td><td>${tag('st-' + g.status, g.status)}</td><td>${esc(g.reason || g.wi || '')}</td></tr>`).join('') + '</table>';
+  },
+  appts() {
+    const r = S.apptRule, slots = apptSlots(24), cur = slots.includes(UI.apptSlot) ? UI.apptSlot : slots.find(m => apptUsed(m) < r.cap);
+    const head = header('Truck Appointments', 'Gate appointments (truck booking): hourly slots with a cap, checked at the gate',
+      'נמל לא יכול לקבל את כל המשאיות באותה שעה: יהיה פקק בשער ועגורני החצר לא יספיקו. לכן כל משאית מזמינה מראש תור (Appointment) לשעה מסוימת, ולכל שעה יש מספר מקומות מוגבל. כשהשעה מלאה, צריך לבחור שעה אחרת. ' +
+      `משאית יכולה להגיע עד חצי שעה לפני השעה שלה ועד חצי שעה אחרי שהיא נגמרת. למשל תור ל-10:00-11:00 = מותר להגיע בין 09:30 ל-11:30. מוקדם יותר או מאוחר יותר, השער דוחה אותה. משאית שלא הגיעה עד סוף החלון "החמיצה" את התור (MISSED). ` +
+      'כדי לקחת מכולת יבוא מזמינים תור למכולה מסוימת. כדי להביא מכולה (ייצוא או ריקה) מזמינים תור בלי מכולה, ובשער בוחרים את התור. מספר המשאית נקבע כבר בהזמנה.');
+    const bars = slots.map(m => {
+      const n = apptUsed(m), full = n >= r.cap;
+      return `<button class="aslot${full ? ' afull' : ''}${m === cur ? ' on' : ''}" data-act="apptSlot" data-id="${m}" ${full ? 'disabled' : ''}>
+        <b>${fmt(m).slice(0, 10)} ${fmt(m).slice(-5)}</b><span class="abar"><i style="width:${Math.min(100, n / r.cap * 100)}%"></i></span>${n} / ${r.cap}</button>`;
+    }).join('');
+    const pick = apptPickups();
+    const rows = S.appts.slice().sort((a, b) => b.slot - a.slot || (b.id > a.id ? 1 : -1)).map(a => `<tr><td>${a.id}</td><td>${slotLabel(a.slot)}</td><td>${APPT_KINDS[a.kind]}</td>
+      <td>${a.unit ? unitLink(a.unit) : '-'}</td><td class="mono">${a.truck}</td><td>${tag('st-' + a.status, a.status)}</td><td>${a.tx || '-'}</td>
+      <td>${a.status === 'BOOKED' ? `<button class="sm" data-act="apptCancel" data-id="${a.id}">Cancel</button>` : ''}</td></tr>`).join('');
+    return head + `<fieldset><legend>Appointment rules</legend><form class="row" data-form="apptRule">
+        <label data-tip="מסומן = השער דוחה משאית בלי תור, או שהגיעה בזמן הלא נכון. לא מסומן = כמו לפני גרסה 8: כל משאית נכנסת, גם בלי תור."><input type="checkbox" name="required" ${r.required ? 'checked' : ''}> Gate requires an appointment</label>
+        <label data-tip="כמה משאיות מותר להזמין לכל שעה (1 עד 10). מספר קטן = פחות פקקים בשער, אבל משאיות צריכות לחכות לשעה פנויה.">Trucks per hour <input name="cap" type="number" min="1" max="10" value="${r.cap}" style="width:60px"></label>
+        <button data-tip="שומר את החוקים. השינוי חל מעכשיו, תורים שכבר הוזמנו נשארים.">Save rules</button></form></fieldset>
+      <fieldset><legend>Hourly slots (next 24 gate hours)</legend><div class="aslots">${bars || '<p class="note">The gate is closed for the coming days.</p>'}</div></fieldset>
+      <fieldset><legend>Book a truck appointment</legend><form class="row" data-form="appt">
+        <label data-tip="למה המשאית באה: להביא מכולת ייצוא, להחזיר מכולה ריקה, או לקחת מכולת יבוא מהחצר.">Purpose <select name="kind">${Object.entries(APPT_KINDS).map(([k, t]) => `<option value="${k}" ${k === 'DELIVER' ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label data-tip="רק לקחת יבוא: איזו מכולה המשאית באה לקחת. ברשימה רק מכולות בחצר שאין להן עדיין תור ושלא הוזמנו לרכבת. [HOLD] = בעיכוב מכס, השער ידחה אותה עד שישחררו.">Unit to pick up <select name="unit">${pick.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.holds.length ? '[HOLD]' : ''}</option>`).join('')}</select></label>
+        <label data-tip="באיזו שעה המשאית תגיע. ליד כל שעה כתוב כמה מקומות כבר תפוסים. שעה מלאה לא ניתנת לבחירה.">Hour <select name="slot">${slots.map(m => `<option value="${m}" ${m === cur ? 'selected' : ''} ${apptUsed(m) >= r.cap ? 'disabled' : ''}>${slotLabel(m)} (${apptUsed(m)}/${r.cap})</option>`).join('')}</select></label>
+        <button data-tip="מזמין את התור. המשאית מקבלת מספר, והשעה שבחרת מתמלאת במקום אחד." ${slots.length ? '' : 'disabled'}>Book</button></form></fieldset>
+      <fieldset><legend>Appointments</legend>${rows ? `<table class="grid"><tr><th>Appt</th><th>Hour</th><th>Purpose</th><th>Unit</th><th>Truck</th><th>Status</th><th>Gate Tx</th><th>Actions</th></tr>${rows}</table>` : '<p class="note">No appointments yet.</p>'}</fieldset>`;
   },
   rail() {
     const head = header('Train Visits', 'Rail: train visit (a carrier visit like a vessel visit), railcars, rail work queues',
@@ -1480,14 +1536,15 @@ const VIEWS = {
       ['בחירת מקום אוטומטית', 'חוק אחד: מכולות ייצוא של אותה אונייה נערמות יחד.', 'מודול Expert Decking: תכנון חצר מבוסס חוקים שאפשר להגדיר.', 'רק חוק אחד וקבוע. אי אפשר עדיין להגדיר חוקים.'],
       ['Rehandles', 'אם המכולה לא למעלה, מזיזים את מה שמעליה וסופרים.', 'זו המטרה העיקרית של תכנון חצר טוב: פחות הזזות מיותרות.', '-'],
       ['Train Visits', 'ביקור רכבת עם אותם 5 שלבים כמו אונייה, קרונות של 40 רגל, מסילה אחת לרכבת אחת. הרכבת מביאה ייצוא ולוקחת יבוא שהוזמן לה. פריקה לפני העמסה, עגורן רכבת + עגורן חצר לכל הזזה, עיכוב מכס חוסם עלייה לרכבת.', 'ב-N4 רכבת היא עוד סוג של Carrier Visit (כמו אונייה ומשאית), עם קרונות (railcars), תכנון קרונות ותורי עבודה לרכבת (Rail).', 'אין סוגי קרונות שונים, אין משקל מקסימלי לקרון, אין סדר קרונות לפי יעד, ואין הרכבה ופירוק של רכבות. המכונה שעובדת על המסילה בנמל הדרום לא ידועה, ולכן עגורן רכבת אחד.'],
-      ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין תיאום תורים מראש (Appointments), אין מצלמות/OCR.'],
+      ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין אין מצלמות/OCR.'],
+      ['Truck Appointments', 'תור לשעה לכל משאית, מספר מקומות לכל שעה, חלון של חצי שעה לפני ואחרי. השער דוחה משאית בלי תור, מוקדמת, מאוחרת, או עם תור למטרה אחרת. תור שלא נוצל = MISSED.', 'ב-N4 יש תורים למשאיות (Gate Appointments) עם מכסות לפי שעה, שהשער בודק כשהמשאית מגיעה. בנמלים רבים מזמינים דרך אתר או אפליקציה של הנמל.', 'אין קנס על תור שהוחמץ, אין מכסה לפי סוג משאית או חברת הובלה, והמשאית מגיעה רק כשאתה לוחץ.'],
       ['Holds', 'עיכוב מכס חוסם יציאה בשער עד שמשחררים.', 'N4 תומך בעיכובים והרשאות על מכולות.', 'רק סוג עיכוב אחד.'],
       ['Work Queues', 'כל תנועה היא הוראת עבודה בתור לפי סוג.', 'N4 יוצר הוראות עבודה ושולח משימות למערכת בקרת הציוד (ECS).', 'כל תנועה לוקחת בדיוק 15 דקות.'],
       ['נמל הדרום אשדוד', 'הנמל בנוי לפי נמל הדרום (HCT) מוקטן פי 4: רציפים 27 ו-28, 2 עגורני רציף, 8 עגורני חצר אוטומטיים ב-4 בלוקים, מסילת רכבת. אין עבודה משישי 15:00 עד מוצאי שבת 20:00, והשער פתוח לפי השעות הרשמיות.', 'לפי מקור ציבורי יחיד, נמל הדרום משתמש כנראה במערכת TOS של Konecranes, ולא ב-N4. הסימולטור נשאר "בסגנון N4" כמודל לימוד.', 'מספר המקומות בחצר לא אמיתי (לא פורסם). אין חגים ואין שעון קיץ. כלי ההסעה בין הרציף לחצר לא ידוע, ולכן AGV.'],
       ['Equipment (ECS)', 'QC, AGV, ושני ASC בכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
       ['Billing', 'תעריפים, חיובי הרמה ושער, אחסנה אחרי ימי חינם, חשבוניות, תשלום, זיכוי.', 'N4 Billing: חשבוניות, תשלומים וזיכויים.', 'אין מע"מ, מטבעות או חוזים לפי לקוח.'],
       ['טכנולוגיה', 'קובץ HTML אחד שרץ בדפדפן, בלי שרת.', 'N4 בנוי על J2EE, עם חוקים עסקיים שמוגדרים בנתונים (metadata) ולא בקוד.', 'אין משתמשים, הרשאות או מסד נתונים.'],
-      ['עוד לא קיים', 'תיאום תורים למשאיות, הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
+      ['עוד לא קיים', 'הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
     ];
     return header('How it maps to N4', 'Concept map', 'הטבלה מסבירה מה כל מסך בסימולטור מדגים, מה הרעיון המקביל במערכת N4 האמיתית (לפי מקורות ציבוריים בלבד), ומה פישטנו. המראה הוא "בסגנון N4", לא העתק: המסכים האמיתיים לא פומביים.') +
       `<table class="grid map rtl"><tr><th>מסך</th><th>מה יש בסימולטור</th><th>ב-N4 האמיתי</th><th>מה פישטנו</th></tr>` +
@@ -1573,6 +1630,13 @@ const ACTIONS = {
   reset: () => { if (autoTimer) ACTIONS.auto(); fresh(); UI.stack = null; UI.unit = null; UI.train = null; flash('ok', 'Demo terminal reset.'); },
   arrive: id => { const v = visitById(id); if (!arrive(v)) flash('err', `${v.wait}. It can berth when that vessel departs.`); },
   start: id => startWork(visitById(id)),
+  apptSlot: id => { UI.apptSlot = Number(id); },
+  apptCancel: id => {
+    const a = S.appts.find(x => x.id === id);
+    if (!a || a.status !== 'BOOKED') return;
+    a.status = 'CANCELLED'; log('GATE', `Appointment ${a.id} cancelled, ${slotLabel(a.slot)} has a free place again`);
+    flash('ok', `Appointment ${a.id} cancelled. Its place in ${slotLabel(a.slot)} is free for another truck.`);
+  },
   cranes: id => {
     const [vid, n] = id.split(':'), v = visitById(vid);
     v.cranes = Number(n) === 2 ? 2 : 1;
@@ -1701,6 +1765,48 @@ const ACTIONS = {
     flash('ok', 'Credit created. It will appear on the next invoice for ' + c.line + '.');
   },
 };
+// ---------- truck appointments (version 8) ----------
+const slotLabel = m => `${fmt(m)}-${fmt(m + 60).slice(-5)}`;
+const apptUsed = m => S.appts.filter(a => a.slot === m && a.status !== 'CANCELLED').length;
+// the next n hours a truck can still book: the gate is open when the hour starts, and the hour is not over yet
+function apptSlots(n) {
+  const out = [];
+  for (let m = S.clock - S.clock % 60; out.length < n && m < S.clock + 8 * 1440; m += 60) if (isGateOpen(m) && m + 60 > S.clock) out.push(m);
+  return out;
+}
+// imports a truck can come for: in the yard, no move planned, not booked to a train, no pickup booked yet (a held box can be booked; the gate refuses it)
+const apptPickups = () => Object.values(S.units).filter(u => u.state === 'YARD' && !u.wi && u.category !== 'EXPORT' && !u.train &&
+  !S.appts.some(a => a.status === 'BOOKED' && a.unit === u.id));
+function addAppt(kind, slot, unitId) {
+  const a = { id: 'AP' + String(++S.seq.appt).padStart(4, '0'), kind, slot, unit: unitId, truck: 'TRK-' + (100 + ++S.seq.truck), status: 'BOOKED', made: S.clock, tx: null };
+  S.appts.push(a);
+  log('GATE', `Appointment ${a.id} booked: ${a.truck} to ${APPT_KINDS[kind].toLowerCase()}${unitId ? ' ' + unitId : ''}, ${slotLabel(slot)}`);
+  return a;
+}
+// empty when the truck is on time for its appointment, else why not
+function apptLate(a) {
+  if (S.clock < a.slot - APPT_GRACE) return `Too early for appointment ${a.id} (${slotLabel(a.slot)}): the truck may come from ${fmt(a.slot - APPT_GRACE).slice(-5)}`;
+  if (S.clock > a.slot + 60 + APPT_GRACE) return `Too late for appointment ${a.id} (${slotLabel(a.slot)}): the window closed at ${fmt(a.slot + 60 + APPT_GRACE).slice(-5)}`;
+  return '';
+}
+// the gate checks the truck's appointment: none, booked for something else, too early or too late -> turned away.
+// Returns true when the truck was turned away. With the rule off any truck may come, and an on-time appointment is still used.
+function apptRefused(want, txKind, unitId, a) {
+  if (!S.apptRule.required) return false;
+  const why = !a ? 'No appointment' : a.kind !== want ? `Appointment ${a.id} is to ${APPT_KINDS[a.kind].toLowerCase()}, not to ${APPT_KINDS[want].toLowerCase()}` : apptLate(a);
+  if (!why) return false;
+  if (a && S.clock > a.slot + 60 + APPT_GRACE) a.status = 'MISSED';
+  const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: a ? a.truck : 'TRK-' + (100 + ++S.seq.truck), kind: txKind, unit: unitId,
+    status: 'REJECTED', reason: why, appt: a ? a.id : null };
+  S.gate.push(tx);
+  log('GATE', `${tx.truck} REJECTED: ${why}`);
+  flash('err', `Truck ${tx.truck} rejected: ${why}.` + (a ? '' : ' Every truck needs an appointment: book an hour on Truck Appointments first.'));
+  return true;
+}
+function useAppt(a, tx) {
+  if (!a || apptLate(a)) return;
+  a.status = 'USED'; a.tx = tx.id; tx.appt = a.id; tx.truck = a.truck;
+}
 // outside gate hours the truck is turned away and nothing else changes (no unit is created)
 function gateClosed(kind, unitId) {
   const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind, unit: unitId,
@@ -1738,12 +1844,15 @@ const FORMS = {
   gatein: f => {
     if (!isGateOpen(S.clock)) return gateClosed('RECEIVE ' + f.kind, null);
     if (f.kind === 'EXPORT' && !f.visit) { flash('err', 'Export needs an open vessel visit.'); return; }
+    const appt = S.appts.find(a => a.id === f.appt && a.status === 'BOOKED');
+    if (apptRefused('RECEIVE ' + f.kind, 'RECEIVE ' + f.kind, null, appt)) return;
     const back = f.ret && S.units[f.ret];
     if (back && (f.kind !== 'EMPTY' || back.state !== 'DEPARTED')) { flash('err', 'A returning container can only come back as an Empty return, and only after it has left the port.'); return; }
     const u = back ? returnUnit(back) : addUnit({ line: f.line, category: f.kind, iso: f.iso, visit: f.kind === 'EXPORT' ? f.visit : null, state: 'AT_GATE',
       pod: f.kind === 'EXPORT' ? Math.min(3, Math.max(1, Number(f.pod) | 0)) : null });
     if (f.kind === 'EMPTY') u.weight = 2.2;
     const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind: 'RECEIVE ' + f.kind, unit: u.id, status: 'PLANNED' };
+    useAppt(appt, tx);
     tx.wi = newWI('GATE_IN', u).id;
     S.gate.push(tx);
     log('GATE', `${tx.truck} in with ${u.id} (${f.kind}), ${tx.wi} created`);
@@ -1753,7 +1862,9 @@ const FORMS = {
     const u = S.units[f.unit];
     if (!u) return;
     if (!isGateOpen(S.clock)) return gateClosed('DELIVER ' + u.category, u.id);
-    const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind: 'DELIVER ' + u.category, unit: u.id };
+    const appt = S.appts.find(a => a.status === 'BOOKED' && a.unit === u.id);
+    if (apptRefused('DELIVER', 'DELIVER ' + u.category, u.id, appt)) return;
+    const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: appt ? appt.truck : 'TRK-' + (100 + ++S.seq.truck), kind: 'DELIVER ' + u.category, unit: u.id };
     S.gate.push(tx);
     if (u.holds.length) {
       tx.status = 'REJECTED'; tx.reason = 'Hold: ' + u.holds.join(', ');
@@ -1762,9 +1873,29 @@ const FORMS = {
       return;
     }
     tx.status = 'PLANNED';
+    useAppt(appt, tx);
     tx.wi = newWI('GATE_OUT', u).id;
     log('GATE', `${tx.truck} in for pickup of ${u.id}, ${tx.wi} created`);
     flash('ok', `Pickup accepted. ${tx.wi} sent to the yard crane queue.`);
+  },
+  appt: f => {
+    const slot = Number(f.slot), kind = f.kind in APPT_KINDS ? f.kind : 'DELIVER', u = kind === 'DELIVER' ? S.units[f.unit] : null;
+    if (!apptSlots(24).includes(slot)) { flash('err', 'That hour cannot be booked: it is over, or the gate is closed then. Pick an hour from the list.'); return; }
+    if (apptUsed(slot) >= S.apptRule.cap) {
+      log('GATE', `Booking refused: ${slotLabel(slot)} is full (${S.apptRule.cap} trucks)`);
+      flash('err', `The hour ${slotLabel(slot)} is full: ${S.apptRule.cap} of ${S.apptRule.cap} trucks already booked. Pick another hour.`); return;
+    }
+    if (kind === 'DELIVER' && (!u || !apptPickups().includes(u))) { flash('err', 'Pick the import the truck comes for. Only boxes in the yard, not booked to a train and without a pickup already booked, can be picked up.'); return; }
+    const a = addAppt(kind, slot, u ? u.id : null);
+    flash('ok', `Appointment ${a.id} booked for truck ${a.truck}, ${slotLabel(slot)}. The gate lets it in from ${fmt(slot - APPT_GRACE).slice(-5)} to ${fmt(slot + 60 + APPT_GRACE).slice(-5)}.` +
+      (u && u.holds.length ? ` Note: ${u.id} is on ${u.holds.join(', ')} hold, so the gate will still refuse it until the hold is released.` : ''));
+    UI.apptSlot = null;
+  },
+  apptRule: f => {
+    S.apptRule.required = f.required === 'on';
+    S.apptRule.cap = Math.min(10, Math.max(1, Number(f.cap) | 0));
+    log('GATE', `Appointment rules: ${S.apptRule.required ? 'required' : 'not required'}, ${S.apptRule.cap} trucks per hour`);
+    flash('ok', S.apptRule.required ? `Saved. The gate turns away trucks with no appointment, and each hour takes up to ${S.apptRule.cap} trucks.` : 'Saved. Any truck may come to the gate now, with or without an appointment.');
   },
   tariff: f => {
     for (const k of ['lift', 'gateFee', 'storagePerDay', 'freeDays']) S.tariff[k] = Math.max(0, Number(f[k]) || 0);
@@ -1814,7 +1945,7 @@ const INFO = {
     'To discharge': 'כמה מכולות יבוא עוד נמצאות על האונייה ומחכות שיורידו אותן.',
     'To load': 'כמה מכולות ייצוא עוד מחכות בחצר (או בשער) כדי לעלות לאונייה.',
     'Plan': 'מצב תוכנית ההעמסה: כמה מקומות באונייה מתוכננים, כמה כבר מלאים, וכמה אזהרות. "not planned" = התוכנית נבנית רק כשלוחצים Start work.',
-    'Actions': 'הכפתורים של השורה הזאת: מה אפשר לעשות עכשיו עם האונייה או החשבונית.',
+    'Actions': 'הכפתורים של השורה הזאת: מה אפשר לעשות עכשיו עם האונייה, החשבונית או התור.',
     'Category': 'סוג המכולה מבחינת הנמל: IMPORT = יבוא (ירדה מאונייה ותצא במשאית), EXPORT = ייצוא (באה במשאית ותעלה לאונייה), EMPTY = ריקה.',
     'Cat.': 'סוג המכולה: IMPORT = יבוא, EXPORT = ייצוא, EMPTY = ריקה.',
     'ON_VESSEL': 'כמה מכולות עדיין על אונייה ומחכות לפריקה.',
@@ -1837,6 +1968,10 @@ const INFO = {
     'Time': 'מתי זה קרה, לפי שעון הנמל.',
     'Truck': 'מספר המשאית.',
     'Status': 'המצב עכשיו. עמידה על התווית הצבעונית מסבירה אותה.',
+    'Appt': 'מספר התור (Appointment) שהמשאית הזמינה מראש. - = באה בלי תור.',
+    'Hour': 'השעה שהמשאית הזמינה להגיע לשער. מותר להגיע עד חצי שעה לפני ועד חצי שעה אחרי.',
+    'Purpose': 'למה המשאית באה: להביא ייצוא, להחזיר ריקה, או לקחת יבוא.',
+    'Gate Tx': 'הפעולה בשער שבה המשאית ניצלה את התור. - = עוד לא הגיעה.',
     'Reason / WI': 'למה המשאית נדחתה, או מספר הוראת העבודה שנוצרה בשבילה.',
     'WI': 'מספר הוראת העבודה (Work Instruction): "להזיז את המכולה הזאת מכאן לשם".',
     'From': 'מאיפה מזיזים את המכולה.',
@@ -1903,6 +2038,10 @@ const INFO = {
     'DISPATCHED': 'ההוראה נשלחה למכונות, והן מבצעות אותה עכשיו.',
     'REJECTED': 'המשאית נדחתה בשער. הסיבה כתובה בעמודה שלידה.',
     'HOLD': 'המכולה בעיכוב: היא לא יכולה לצאת מהשער.',
+    'BOOKED': 'התור מוזמן: המשאית עוד לא הגיעה לשער.',
+    'USED': 'המשאית הגיעה בזמן והשער קיבל אותה. התור נוצל.',
+    'MISSED': 'המשאית לא הגיעה עד חצי שעה אחרי סוף השעה שלה (או הגיעה מאוחר מדי). התור הוחמץ, והמקום נשאר תפוס בספירה של אותה שעה.',
+    'CANCELLED': 'התור בוטל. המקום בשעה הזאת התפנה למשאית אחרת.',
     'CONFLICT': 'התנגשות: שתי אוניות רוצות את אותו רציף באותו זמן. אחת תחכה בים עד שהשנייה תצא. פתרון: להעביר לרציף השני או לדחות את ההגעה.',
     'CUSTOMS': 'עיכוב מכס: המכולה לא יכולה לצאת מהשער עד שהמכס משחרר אותה (כפתור Release).',
     'DRAFT': 'טיוטה: החשבונית עוד לא נשלחה ללקוח, ואפשר לנעול אותה (Finalize).',
@@ -1916,6 +2055,10 @@ const INFO = {
     'Create vessel visit': 'כאן יוצרים אונייה חדשה שתגיע לנמל.',
     'Receive (gate in)': 'משאית שמביאה מכולה לנמל: מכולת ייצוא שתעלה לאונייה, או מכולה ריקה שחוזרת.',
     'Deliver (gate out)': 'משאית שבאה לקחת מכולה מהחצר ולצאת איתה מהנמל.',
+    'Appointment rules': 'החוקים של התורים: האם השער דורש תור מכל משאית, וכמה משאיות מותר בכל שעה.',
+    'Hourly slots': 'השעות הקרובות שבהן השער פתוח. בכל שעה: כמה משאיות הזמינו מתוך כמה מותר, והפס מראה כמה השעה מלאה. שעה אדומה = מלאה. לחיצה על שעה בוחרת אותה בטופס.',
+    'Book a truck appointment': 'כאן מזמינים תור למשאית: למה היא באה, איזו מכולה (רק כשלוקחים יבוא), ובאיזו שעה.',
+    'Appointments': 'כל התורים: לאיזו שעה, למה, איזו משאית, ובאיזה מצב התור עכשיו. החדשים למעלה.',
     'Queue DISCHARGE': 'תור הפריקה: הוראות להוריד מכולות מאונייה לחצר. כתוב כמה מחכות, כמה בביצוע וכמה הסתיימו.',
     'Queue LOAD': 'תור ההעמסה: הוראות להעלות מכולות מהחצר לאונייה, לפי תוכנית ההעמסה.',
     'Queue GATE_IN': 'תור השער פנימה: הוראות להוריד מכולה ממשאית לחצר.',

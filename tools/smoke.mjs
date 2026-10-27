@@ -32,7 +32,7 @@ check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO
 check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -40,7 +40,7 @@ for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory'
 
 // rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -87,7 +87,9 @@ let s = await state();
 check(s.visits[0].phase === 'COMPLETE', 'visit 1 complete, got ' + s.visits[0].phase);
 check(Object.values(s.units).filter(u => u.visit === s.visits[0].id).every(u => u.state === 'YARD'), 'imports in yard');
 
-// gate in an export for visit 2, gate out a held unit (rejected) and a free one
+// gate in an export for visit 2, gate out a held unit (rejected) and a free one.
+// These older scenarios test the gate without truck appointments (version 8 rule switched off)
+await page.evaluate(() => { S.apptRule.required = false; });
 await page.click('nav a[data-id="gate"]');
 await page.selectOption('form[data-form="gatein"] select[name="visit"]', s.visits[1].id);
 await page.click('form[data-form="gatein"] button');
@@ -428,6 +430,7 @@ await page.click('[data-act="reset"]');
 
 // ---------- version 5: unit vs unit facility visit ----------
 const life = await page.evaluate(() => {
+  S.apptRule.required = false;   // walk-in trucks: appointments are tested in version 8
   const steps = u => curVisit(u).steps.map(x => x.state).join('>');
   const v1 = S.visits[0], v2 = S.visits[1];
   const imp = Object.values(S.units).find(u => u.visit === v1.id && !u.holds.length);
@@ -642,9 +645,92 @@ await page.click('nav a[data-id="rail"]');
 check((await page.textContent('#content')).includes('No train visits'), 'rail screen works on an old save');
 await page.click('[data-act="reset"]');
 
+// ---------- version 8: truck appointments ----------
+await page.click('[data-act="reset"]');
+s = await state();
+const seedAp = s.appts[0];
+check(s.apptRule.required && s.apptRule.cap === 3 && s.appts.length === 2 && seedAp.kind === 'DELIVER' && seedAp.slot === 60, 'demo has two appointments, rule on, 3 per hour');
+// a truck with no appointment is turned away and creates nothing
+await page.click('nav a[data-id="gate"]');
+let unitsBefore8 = Object.keys(s.units).length;
+await page.selectOption('form[data-form="gatein"] select[name="appt"]', '');
+await page.click('form[data-form="gatein"] button');
+s = await state();
+check((await page.textContent('.flash')).includes('No appointment') && s.gate.at(-1).status === 'REJECTED' && Object.keys(s.units).length === unitsBefore8, 'walk-in truck rejected, no unit created');
+// the seeded pickup (07:00-08:00) is too early at 06:00, on time at 06:45
+await page.selectOption('form[data-form="gateout"] select[name="unit"]', seedAp.unit);
+await page.click('form[data-form="gateout"] button');
+s = await state();
+check(s.gate.at(-1).reason.startsWith('Too early') && s.gate.at(-1).truck === seedAp.truck && s.appts[0].status === 'BOOKED', 'early truck rejected, appointment kept: ' + s.gate.at(-1).reason);
+for (let i = 0; i < 3; i++) await page.click('[data-act="cycle"]');
+await page.click('nav a[data-id="gate"]');
+await page.selectOption('form[data-form="gateout"] select[name="unit"]', seedAp.unit);
+await page.click('form[data-form="gateout"] button');
+s = await state();
+check(s.appts[0].status === 'USED' && s.gate.at(-1).appt === seedAp.id && s.gate.at(-1).status === 'PLANNED' && s.units[seedAp.unit].wi, 'on-time truck accepted and uses its appointment');
+// book the current hour (06:00-07:00) until it is full; the next booking is refused
+await page.click('nav a[data-id="appts"]');
+check((await page.$$('.aslot')).length === 24, '24 bookable hours shown');
+await page.selectOption('form[data-form="appt"] select[name="kind"]', 'RECEIVE EXPORT');
+await page.selectOption('form[data-form="appt"] select[name="slot"]', '0');
+await page.click('form[data-form="appt"] button');
+check((await page.textContent('.flash')).includes('booked'), 'appointment booked from the form');
+const full = await page.evaluate(() => {
+  FORMS.appt({ kind: 'RECEIVE EMPTY', slot: '0' }); FORMS.appt({ kind: 'RECEIVE EXPORT', slot: '0' });
+  const n = S.appts.length; FORMS.appt({ kind: 'RECEIVE EXPORT', slot: '0' }); render();
+  return { n, after: S.appts.length, used: apptUsed(0), msg: UI.msg.text };
+});
+check(full.used === 3 && full.after === full.n && full.msg.includes('full'), 'fourth truck in a full hour refused: ' + JSON.stringify(full));
+check(await page.$eval('.aslot[data-id="0"]', b => b.disabled && b.classList.contains('afull')), 'full hour drawn red and disabled');
+// gate in with an appointment for something else is refused; with the right one it is accepted
+const g8 = await page.evaluate(() => {
+  const ex = S.appts.find(a => a.slot === 0 && a.kind === 'RECEIVE EXPORT' && a.status === 'BOOKED');
+  FORMS.gatein({ kind: 'EMPTY', appt: ex.id, line: 'BLU', iso: '22G1' });
+  const wrong = S.gate.at(-1).reason;
+  FORMS.gatein({ kind: 'EXPORT', appt: ex.id, visit: S.visits[1].id, pod: '1', line: 'RED', iso: '22G1' });
+  return { wrong, ok: S.gate.at(-1).status, appt: ex.status, truck: S.gate.at(-1).truck === ex.truck };
+});
+check(g8.wrong.includes('not to return an empty') && g8.ok === 'PLANNED' && g8.appt === 'USED' && g8.truck, 'appointment for another purpose refused, right one used: ' + JSON.stringify(g8));
+// cancel frees the place
+await page.click('nav a[data-id="appts"]');
+const cancelId = await page.evaluate(() => S.appts.find(a => a.slot === 0 && a.kind === 'RECEIVE EMPTY').id);
+await page.click(`[data-act="apptCancel"][data-id="${cancelId}"]`);
+s = await state();
+check(s.appts.find(a => a.id === cancelId).status === 'CANCELLED', 'appointment cancelled');
+// a truck that never came: the 09:00 export drop-off is MISSED after 11:30
+await page.evaluate(() => { for (let i = 0; i < 24; i++) cycle(); render(); });
+s = await state();
+check(s.appts[1].status === 'MISSED' && s.log.some(e => e.msg.includes(s.appts[1].id + ' missed')), 'unused appointment becomes MISSED');
+noTip = await auditTips('v8');
+check(noTip.length === 0, 'tooltips missing after appointments:\n  ' + noTip.join('\n  '));
+// rule off: any truck may come
+await page.evaluate(() => { FORMS.apptRule({ cap: '3' }); FORMS.gatein({ kind: 'EMPTY', appt: '', line: 'GRN', iso: '22G1' }); render(); });
+s = await state();
+check(!s.apptRule.required && s.gate.at(-1).status === 'PLANNED' && !s.gate.at(-1).appt, 'rule off: walk-in accepted');
+// berth schedule: Start work and Depart buttons work there too
+await page.click('[data-act="reset"]');
+for (let i = 0; i < 4; i++) await page.click('[data-act="cycle"]');
+await page.click('nav a[data-id="berth"]');
+await page.click('[data-act="start"][data-id="V001"]');
+s = await state();
+check(s.visits[0].phase === 'WORKING', 'Start work from the berth schedule');
+check(await page.$eval('[data-act="depart"][data-id="V001"]', b => b.disabled), 'Depart disabled while working');
+await page.evaluate(() => { let n = 0; while (S.visits[0].phase === 'WORKING' && n++ < 100) cycle(); render(); });
+await page.click('[data-act="depart"][data-id="V001"]');
+s = await state();
+check(s.visits[0].phase === 'DEPARTED', 'Depart from the berth schedule');
+// an older save gets no appointments and the rule switched on
+await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), readFileSync(resolve('tools/fixtures/save-v4.json'), 'utf8'));
+await page.reload();
+s = await state();
+check(s.ver === CUR_VER && s.appts.length === 0 && s.apptRule.required && s.apptRule.cap === 3, 'old save gets appointments, none booked');
+await page.click('nav a[data-id="appts"]');
+check((await page.textContent('#content')).includes('No appointments yet'), 'appointments screen works on an old save');
+await page.click('[data-act="reset"]');
+
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'inspector', 'gate', 'rail', 'equipment']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }
