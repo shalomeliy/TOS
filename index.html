@@ -103,6 +103,7 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 .st-BOOKED{background:#fff3c4}.st-USED{background:#d4efd4}.st-MISSED{background:#f7c9c9}.st-CANCELLED{background:#eee}
 .aslots{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:4px}
 .aslot{display:flex;flex-direction:column;align-items:stretch;gap:2px;font-size:11px;padding:3px 4px;text-align:left}
+.rule-on{background:#bfe3c0;font-weight:bold}
 .aslot.on{outline:2px solid #1d4f91}.aslot.afull{background:#f7c9c9;color:#600}
 .abar{display:block;height:6px;background:#fff;border:1px solid #999}.abar i{display:block;height:100%;background:#4a7bc0}.afull .abar i{background:#b33}
 .st-PLANNED{background:#fff3c4}.st-DISPATCHED{background:#c8dcff}.st-COMPLETE{background:#d4efd4}
@@ -206,8 +207,8 @@ const BLOCKS = [
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
 // shown top right; bump on every push: <roadmap version>.<fix number inside it>
-const APP_VERSION = 'v8.0', APP_DATE = '27-10-2026';
-const STATE_VER = 8;                             // bump when the saved shape changes, and add a MIGRATE step
+const APP_VERSION = 'v9.0', APP_DATE = '28-10-2026';
+const STATE_VER = 9;                             // bump when the saved shape changes, and add a MIGRATE step
 // truck appointments: one-hour slots; a truck is on time from APPT_GRACE minutes before its hour to APPT_GRACE after it ends
 const APPT_GRACE = 30, APPT_KINDS = { 'RECEIVE EXPORT': 'Bring an export', 'RECEIVE EMPTY': 'Return an empty', DELIVER: 'Pick up an import' };
 // each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
@@ -222,7 +223,7 @@ const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer" }
 const PAGES = [
   ['Terminal', [['overview', 'Overview']]],
   ['Vessel', [['vessels', 'Vessel Visits'], ['berth', 'Berth Schedule'], ['stowage', 'Stowage Plan']]],
-  ['Yard', [['yard', 'Yard View'], ['inventory', 'Unit Inventory'], ['inspector', 'Unit Inspector']]],
+  ['Yard', [['yard', 'Yard View'], ['yardrules', 'Yard Rules'], ['inventory', 'Unit Inventory'], ['inspector', 'Unit Inspector']]],
   ['Gate', [['gate', 'Gate Transactions'], ['appts', 'Truck Appointments']]],
   ['Rail', [['rail', 'Train Visits']]],
   ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
@@ -236,6 +237,7 @@ const PAGE_TIPS = {
   berth: 'לוח הרציפים: איזו אונייה עוגנת באיזה רציף ומתי, וכמה עגורני רציף כל אונייה מקבלת.',
   stowage: 'תוכנית ההעמסה: איזו מכולה עולה לאיזה מקום באונייה, ולמה. כאן גם מתרגלים תכנון בעצמך.',
   yard: 'מפת החצר: איפה כל מכולה עומדת. לחיצה על ערימה מראה מה בתוכה.',
+  yardrules: 'חוקי החצר: לפי מה המחשב בוחר לכל מכולה ערימה בחצר, ובאיזה סדר חשיבות. כאן גם רואים במספרים כמה הזזות מיותרות כל בחירה גורמת.',
   inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן משחררים עיכוב מכס.',
   inspector: 'מכולה אחת לעומק: מי היא, כל הביקורים שלה בנמל, ושלבי החיים של כל ביקור.',
   gate: 'השער: משאיות שמביאות מכולות, או באות לקחת מכולות.',
@@ -254,6 +256,7 @@ const SCREEN_TIPS = {
   berth: 'מה רואים: ציר זמן של יומיים לכל רציף (27 ו-28). כל פס הוא אונייה: מתי היא מגיעה ועד מתי היא תתפוס את הרציף. מקווקו = עוד בדרך (תכנון), מלא = כבר ליד הרציף, אדום עם ! = שתי אוניות רוצות את אותו רציף באותו זמן. שבת מסומנת בפסים סגולים, והקו האדום הוא עכשיו. מתחת: טבלת האוניות וטבלת עגורני הרציף. מה אפשר לעשות: לבחור לכל אונייה 1 או 2 עגורני רציף, להעביר אונייה שעוד בדרך לרציף השני, להקדים או לדחות את ההגעה שלה בשעה, ולהעביר עגורן רציף מאונייה לאונייה.',
   stowage: 'מה רואים: חתך של האונייה, bay אחד בכל פעם: שורות לרוחב, קומות לגובה, קו עבה בין הבטן (למטה) לסיפון (למעלה). מקום עם קו מקווקו = מתוכנן, מלא = כבר על האונייה, אדום עם ! = אזהרה. מה אפשר לעשות: לבחור אונייה ו-bay, להחליף צבע לפי נמל יעד או לפי משקל, וללחוץ על מקום כדי לקרוא למה המכולה שם. תרגול: באונייה שעוד לא התחילו לעבוד עליה לוחצים Plan it myself, בוחרים מכולה מהרשימה ולוחצים על מקום. המערכת חוסמת מה שבלתי אפשרי ומסמנת ב-! טעות תכנון, ובסוף אפשר להשוות לתוכנית של המחשב.',
   yard: 'מה רואים: מפת החצר, בלוק אחרי בלוק, וכל ערימה של מכולות לפי צבע הסוג. מה אפשר לעשות: ללחוץ על ערימה ולראות אילו מכולות בתוכה, מלמעלה למטה.',
+  yardrules: 'מה רואים: רשימת חוקי החצר לפי סדר חשיבות (העליון הכי חשוב), כל חוק דולק (ON) או כבוי (OFF), ועל איזה סוג מכולות הוא חל. מתחת: איך מסדרים יבוא וריקות, טבלת ניסוי שמשווה את החוקים שלך לבלי חוקים ולכל החוקים (כמה הזזות מיותרות וכמה ערימות נתפסו), וכמה הזזות מיותרות היו בחצר האמיתית מאז ששינית חוקים. מה אפשר לעשות: להדליק ולכבות חוק, להזיז חוק למעלה או למטה בסדר החשיבות, לבחור לפזר נמוך או לערום גבוה, ולחזור לחוקים הרגילים.',
   inspector: 'מה רואים: מכולה אחת לעומק. למעלה המכולה עצמה (מספר, בעלים, סוג: לא משתנים). מתחת הביקורים שלה (UFV): כל פעם שהייתה בנמל, איך הגיעה ואיך יצאה. מתחת שבעת שלבי החיים של הביקור שנבחר, עם השעה של כל שלב, ואז ההזזות והחיובים של אותו ביקור. מה אפשר לעשות: לחפש מכולה, לבחור ביקור (Show), ולקפוץ למקום שלה בחצר.',
   inventory: 'מה רואים: רשימה של כל המכולות, עם הסוג, המיקום, המשקל, ימי האחסנה והעיכובים. מה אפשר לעשות: לשחרר עיכוב מכס, ולהציג גם מכולות שכבר יצאו.',
   gate: 'מה רואים: כל המשאיות שהגיעו לשער, ומה קרה לכל אחת (התקבלה, או נדחתה ולמה, למשל אין תור, הגיעה מוקדם או מאוחר מדי, עיכוב מכס או שער סגור), ואיזה תור כל משאית ניצלה. מה אפשר לעשות: להכניס משאית עם מכולה, או לשלוח משאית לקחת מכולה מהחצר. כל משאית צריכה תור מראש (מסך Truck Appointments). השער פתוח א\'-ה\' 05:00-24:00, שישי 05:00-14:45, שבת סגור.',
@@ -288,6 +291,12 @@ const TIPS = {
   apptSlot: el => { const m = Number(el.dataset.id), n = apptUsed(m), cap = S.apptRule.cap;
     return `השעה ${fmt(m).slice(-5)}-${fmt(m + 60).slice(-5)} בשער: ${n} משאיות הזמינו תור מתוך ${cap} מקומות. ` + (n >= cap ? 'השעה מלאה, אי אפשר להזמין אליה עוד משאית.' : 'לחיצה בוחרת את השעה הזאת בטופס ההזמנה למטה.'); },
   apptCancel: 'מבטל את התור. המקום בשעה הזאת מתפנה למשאית אחרת.',
+  ruleToggle: el => { const id = el.dataset.id, on = S.yardRules.on[id];
+    return (on ? 'החוק דולק. לחיצה מכבה אותו. ' : 'החוק כבוי. לחיצה מדליקה אותו. ') + YARD_TIPS[id]; },
+  ruleUp: 'מעלה את החוק מקום אחד בסדר החשיבות. כשאין ערימה שמקיימת את כל החוקים, המחשב שומר על החוק העליון ומוותר קודם על התחתון.',
+  ruleDown: 'מוריד את החוק מקום אחד בסדר החשיבות: כשאין ברירה, המחשב יוותר עליו לפני החוקים שמעליו.',
+  yardImports: el => el.dataset.id === 'PILE' ? 'לערום גבוה: כל מכולת יבוא או ריקה עולה על הערימה הכי גבוהה שעוד יש בה מקום. חוסכים ערימות (מקום בחצר), אבל כשמשאיות באות לקחת מכולות בסדר אקראי, הרבה פעמים צריך להזיז מכולות שמעל.' : 'לפזר נמוך: כל מכולת יבוא או ריקה הולכת לערימה הכי נמוכה. כך כמעט אין מכולה מעל מכולה, ומשאית לוקחת בלי הזזות מיותרות, אבל תופסים יותר ערימות בחצר.',
+  rulesDefault: 'מחזיר את החוקים למה שהחצר עשתה עד גרסה 9: רק "אותה אונייה" דולק, ויבוא מתפזר נמוך.',
   stowOpen: 'פותח את תוכנית ההעמסה של האונייה הזאת: איזו מכולה עולה לאיזה מקום באונייה.',
   stowVisit: 'מציג את תוכנית ההעמסה של האונייה הזאת.',
   bay: el => `מציג את bay ${el.dataset.id}: חתך אחד של האונייה. ${SHIP.bays[el.dataset.id] === '40' ? "ב-bay הזה עומדות רק מכולות של 40 רגל." : "ב-bay הזה עומדות רק מכולות של 20 רגל."}`,
@@ -561,7 +570,7 @@ function fresh() {
   S = {
     ver: STATE_VER, clock: 0, auto: false, workOn: true, rng: 20261022,
     seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0, appt: 0 },
-    units: {}, stacks: {}, visits: [], trains: [], appts: [], apptRule: { required: true, cap: 3 }, wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
+    units: {}, stacks: {}, visits: [], trains: [], appts: [], apptRule: { required: true, cap: 3 }, yardRules: defaultYardRules(), yardSince: { t: 0, rehandles: 0, moves: 0 }, wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
     stats: { rehandles: 0, moves: 0 },
     tariff: { lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 },
   };
@@ -638,6 +647,10 @@ function load() {
 }
 // one step per saved version; each step brings a save up by one version
 const MIGRATE = {
+  8(s) {   // version 8 -> 9: yard rules. The default rules are what the yard did until now, so nothing moves
+    s.yardRules = s.yardRules || defaultYardRules();
+    s.yardSince = s.yardSince || { t: s.clock, rehandles: s.stats?.rehandles || 0, moves: s.stats?.moves || 0 };
+  },
   7(s) {   // version 7 -> 8: truck appointments. No appointments yet, and from now on the gate asks for one
     s.appts = s.appts || [];
     s.apptRule = s.apptRule || { required: true, cap: 3 };
@@ -709,28 +722,87 @@ function normalize(s) {
   return s;
 }
 
-// ---------- yard planning (simple rule-based decking) ----------
+// ---------- yard planning (version 9: rule-based decking, in the spirit of Expert Decking) ----------
+// each rule keeps apart boxes that leave the yard at different times. A stack breaks a rule when any box in it
+// (or already on its way to it) differs from the new box in what the rule compares
+const YARD_RULES = {
+  VESSEL: { label: 'Same vessel', cats: ['EXPORT'], same: (u, x) => x.visit === u.visit },
+  POD: { label: 'Same port of discharge', cats: ['EXPORT'], same: (u, x) => x.pod === u.pod },
+  SIZE: { label: "Same size (20' / 40')", cats: ['EXPORT', 'IMPORT', 'EMPTY'], same: (u, x) => sizeOf(x) === sizeOf(u) },
+  WEIGHT: { label: 'Same weight class (under 15 t / 15 t and more)', cats: ['EXPORT'], same: (u, x) => (x.weight >= 15) === (u.weight >= 15) },
+  HOLD: { label: 'Boxes on hold apart', cats: ['IMPORT'], same: (u, x) => !!x.holds.length === !!u.holds.length },
+};
+const YARD_TIPS = {
+  VESSEL: 'אותה אונייה: מכולות ייצוא של אוניות שונות לא נערמות יחד. אחרת, כשמעמיסים את האונייה הראשונה, צריך להזיז את המכולות של האונייה השנייה שעומדות מעליהן.',
+  POD: 'אותו נמל יעד: מכולות ייצוא שיורדות בנמלים שונים לא נערמות יחד. האונייה מעמיסה קודם את המכולות לנמל האחרון (הן למטה באונייה), אז מכולה לנמל קרוב שעומדת מעליהן בחצר תצטרך לזוז.',
+  SIZE: 'אותו גודל: מכולות של 20 רגל ושל 40 רגל לא נערמות יחד. בהעמסה עולות קודם כל ה-20, אז 40 שעומדת מעליהן בחצר בדרך. (בנמל אמיתי אי אפשר בכלל לשים 40 על 20.)',
+  WEIGHT: 'אותו משקל: מכולות ייצוא קלות (פחות מ-15 טון) וכבדות (15 טון ומעלה) לא נערמות יחד. הכבדות עולות לאונייה קודם (הן למטה), אז קלה שעומדת על כבדה בחצר תצטרך לזוז.',
+  HOLD: 'עיכוב בנפרד: מכולות יבוא בעיכוב מכס לא נערמות עם מכולות חופשיות. המכולות החופשיות יוצאות קודם, והמעוכבות נשארות עד השחרור, אז מעוכבת שעומדת מעל חופשית תצטרך לזוז.',
+};
+// the default is what the yard did before version 9: one vessel per export stack, imports spread low
+const defaultYardRules = () => ({ order: Object.keys(YARD_RULES), on: { VESSEL: true, POD: false, SIZE: false, WEIGHT: false, HOLD: false }, imports: 'SPREAD' });
 const reservedIn = key => S.wis.filter(w => w.status !== 'COMPLETE' && w.dest === key).length;
 const heightOf = key => S.stacks[key].length + reservedIn(key);
+// the rules that apply to this box, most important first
+const rulesFor = u => S.yardRules.order.filter(r => S.yardRules.on[r] && YARD_RULES[r].cats.includes(u.category));
+// the rules a stack would break if the box went there
+function stackBreaks(u, key, rules) {
+  const boxes = S.stacks[key].map(id => S.units[id]).concat(S.wis.filter(w => w.dest === key && w.status !== 'COMPLETE').map(w => S.units[w.unit]));
+  return rules.filter(r => boxes.some(x => !YARD_RULES[r].same(u, x)));
+}
+// lowest score wins. A broken rule costs more than every rule below it together, so a more important rule is
+// never given up to keep less important ones; the base only decides between stacks that break the same rules:
+// exports top up a started stack before opening a new one; imports and empties spread low (or pile up)
 function planSlot(u, excludeKey) {
-  const blocks = BLOCKS.filter(b => b.use.includes(u.category)).map(b => b.id);
+  const blocks = BLOCKS.filter(b => b.use.includes(u.category)).map(b => b.id), rules = rulesFor(u);
   let best = null, bestScore = Infinity;
   for (const key of Object.keys(S.stacks)) {
     if (!blocks.includes(key[0]) || key === excludeKey) continue;
     const h = heightOf(key);
     if (h >= MAX_TIER) continue;
-    let score;
-    const st = S.stacks[key].map(id => S.units[id]);
-    if (u.category === 'EXPORT') {
-      // keep one vessel per stack so loading never digs: mixed stacks are a last resort
-      const same = st.every(x => x.visit === u.visit) && S.wis.filter(w => w.dest === key && w.status !== 'COMPLETE').every(w => S.units[w.unit].visit === u.visit);
-      score = h === 0 ? 5 : same ? h * 0.5 : 20 + h;
-    } else {
-      score = h;                    // imports/empties: spread low, pickups come in random order
-    }
+    let score = u.category === 'EXPORT' ? (h === 0 ? 5 : h * 0.5) : S.yardRules.imports === 'PILE' ? (h === 0 ? MAX_TIER : MAX_TIER - 1 - h) : h;
+    const br = stackBreaks(u, key, rules);
+    br.forEach(r => { score += 10 * 2 ** (rules.length - 1 - rules.indexOf(r)); });
     if (score < bestScore) { bestScore = score; best = key; }
   }
   return best;
+}
+// the same arrivals and departures on an empty scratch yard, for a set of rules: how many rehandles, how many stacks.
+// 56 exports for two vessels and 40 imports (a quarter on hold) arrive mixed; the free imports leave in random order,
+// then the held ones; then each vessel loads in the planner's order (20' first, later stop first, heavier first)
+function yardTest(rules) {
+  const keep = S;
+  let seed = 9090;
+  const rnd = () => { let t = (seed = (seed + 0x6D2B79F5) | 0); t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  try {
+    S = { stacks: {}, units: {}, wis: [], log: [], stats: { rehandles: 0, moves: 0 }, yardRules: rules };
+    Object.keys(keep.stacks).forEach(k => { S.stacks[k] = []; });
+    let n = 0;
+    const mk = p => { const u = Object.assign({ id: 'T' + (++n), holds: [], visit: null, pod: null, weight: 0, pos: null }, p); S.units[u.id] = u; return u; };
+    const ex = [], im = [];
+    for (let i = 0; i < 56; i++) ex.push(mk({ category: 'EXPORT', visit: i % 2 ? 'X1' : 'X2', pod: 1 + Math.floor(rnd() * 3), weight: Math.round((8 + rnd() * 18) * 10) / 10, iso: rnd() < 0.7 ? '22G1' : '45G1' }));
+    for (let i = 0; i < 40; i++) im.push(mk({ category: 'IMPORT', holds: rnd() < 0.25 ? ['CUSTOMS'] : [], weight: 12, iso: rnd() < 0.7 ? '22G1' : '45G1' }));
+    const shuffle = list => list.map(u => [rnd(), u]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+    shuffle([...ex, ...im]).forEach(u => placeUnit(u, planSlot(u)));
+    const stacks = Object.values(S.stacks).filter(st => st.length).length;
+    shuffle(im.filter(u => !u.holds.length)).concat(im.filter(u => u.holds.length)).forEach(u => retrieve(u));
+    const imp = S.stats.rehandles;
+    for (const v of ['X1', 'X2']) for (const size of ['20', '40'])
+      ex.filter(u => u.visit === v && sizeOf(u) === size).sort((a, b) => b.pod - a.pod || b.weight - a.weight || yardTier(b) - yardTier(a)).forEach(u => retrieve(u));
+    return { imp, exp: S.stats.rehandles - imp, total: S.stats.rehandles, stacks };
+  } finally { S = keep; }
+}
+function yardRulesChanged(what) {
+  S.yardSince = { t: S.clock, rehandles: S.stats.rehandles, moves: S.stats.moves };
+  const R = S.yardRules, on = R.order.filter(r => R.on[r]);
+  log('YARD', `Yard rules: ${what}. Now: ${on.length ? on.map((r, i) => `${i + 1}. ${YARD_RULES[r].label}` ).join(', ') : 'no rules'}; imports ${R.imports === 'PILE' ? 'pile up' : 'spread low'}`);
+  flash('ok', 'Saved. Boxes that come into the yard from now on follow these rules; boxes already in the yard stay where they are.');
+}
+function moveRule(id, d) {
+  const o = S.yardRules.order, i = o.indexOf(id), j = i + d;
+  if (i < 0 || j < 0 || j >= o.length) return;
+  [o[i], o[j]] = [o[j], o[i]];
+  yardRulesChanged(`${YARD_RULES[id].label} moved ${d < 0 ? 'up' : 'down'} to place ${j + 1}`);
 }
 function placeUnit(u, key) { S.stacks[key].push(u.id); u.pos = key; }
 // Lift a unit out of its stack. Anything on top gets moved first (a rehandle).
@@ -1314,7 +1386,7 @@ const VIEWS = {
         '</table><p class="note">Top of the stack is first. To take out a lower box, the crane must first move everything above it (a rehandle).</p>';
     }
     return header('Yard View', 'Yard blocks, stacks and tiers; Expert Decking (rule-based slot choice)',
-      'החצר מחולקת לבלוקים, וכל בלוק לערימות. כל ריבוע קטן הוא מכולה, והערימה בגובה עד 4. ירוק = ייצוא, כתום = יבוא, אפור = ריקה, פסים אדומים = עיכוב מכס. המערכת בוחרת מקום לבד לפי חוק פשוט: מכולות של אותה אונייה נערמות יחד, כדי שבהעמסה לא יצטרכו לחפור.') +
+      'החצר מחולקת לבלוקים, וכל בלוק לערימות. כל ריבוע קטן הוא מכולה, והערימה בגובה עד 4. ירוק = ייצוא, כתום = יבוא, אפור = ריקה, פסים אדומים = עיכוב מכס. המערכת בוחרת מקום לבד לפי חוקי החצר (מסך Yard Rules): בהתחלה רק חוק אחד, מכולות ייצוא של אותה אונייה נערמות יחד, כדי שבהעמסה לא יצטרכו לחפור.') +
       `<div class="legend"><span><i style="background:var(--exp)"></i>Export</span><span><i style="background:var(--imp)"></i>Import</span><span><i style="background:var(--mty)"></i>Empty</span><span><i class="tier held" style="background-color:var(--imp)"></i>On hold</span></div>
       <div class="yardwrap"><div class="blocks">${blocks}</div><div>${side}</div></div>`;
   },
@@ -1391,6 +1463,30 @@ const VIEWS = {
         <button data-tip="השער בודק את המכולה. אם אין עיכוב, נוצרת משימה להוציא אותה מהחצר למשאית." ${pickups.length ? '' : 'disabled'}>Gate out</button></form></fieldset>
       <table class="grid"><tr><th>Tx</th><th>Time</th><th>Truck</th><th>Appt</th><th>Type</th><th>Unit</th><th>Status</th><th>Reason / WI</th></tr>` +
       S.gate.slice().reverse().map(g => `<tr><td>${g.id}</td><td>${fmt(g.time)}</td><td class="mono">${g.truck}</td><td>${g.appt || '-'}</td><td>${g.kind}</td><td>${g.unit ? unitLink(g.unit) : '-'}</td><td>${tag('st-' + g.status, g.status)}</td><td>${esc(g.reason || g.wi || '')}</td></tr>`).join('') + '</table>';
+  },
+  yardrules() {
+    const R = S.yardRules, cats = { EXPORT: 'Exports', IMPORT: 'Imports', EMPTY: 'Empties' };
+    const head = header('Yard Rules', 'Expert Decking: ordered yard rules choose the stack for every box coming into the yard',
+      'כל מכולה שנכנסת לחצר (מאונייה, ממשאית או מרכבת) מקבלת ערימה. המחשב בוחר את הערימה לפי החוקים שכאן. כל חוק אומר "אל תערבב בערימה אחת מכולות ששונות ב...", כי מכולות שיוצאות בזמנים שונים ונמצאות באותה ערימה גורמות להזזות מיותרות (rehandles): כדי להוציא מכולה מלמטה צריך קודם להזיז את מה שמעליה. ' +
+      'הסדר חשוב: החוק העליון הכי חשוב. כשאין ערימה שמקיימת את כל החוקים, המחשב מוותר קודם על החוק הנמוך ביותר. החוקים חלים רק על מכולות שנכנסות מעכשיו, מכולות שכבר בחצר לא זזות. ' +
+      'בתחתית: ניסוי. אותן 96 מכולות נכנסות ויוצאות בחצר ריקה, פעם עם החוקים שלך ופעם בלי ועם כולם, ורואים כמה הזזות מיותרות היו וכמה ערימות נתפסו. ככל שמפרידים יותר, יש פחות הזזות, אבל תופסים יותר ערימות.');
+    const rows = R.order.map((id, i) => { const r = YARD_RULES[id];
+      return `<tr><td class="num">${i + 1}</td><td><button class="sm${R.on[id] ? ' on rule-on' : ''}" data-act="ruleToggle" data-id="${id}">${R.on[id] ? 'ON' : 'OFF'}</button></td><td>${r.label}</td><td>${r.cats.map(c => cats[c]).join(', ')}</td>
+        <td><button class="sm" data-act="ruleUp" data-id="${id}" ${i ? '' : 'disabled'}>Up</button> <button class="sm" data-act="ruleDown" data-id="${id}" ${i < R.order.length - 1 ? '' : 'disabled'}>Down</button></td></tr>`; }).join('');
+    const mine = yardTest(R), all = { order: R.order, on: Object.fromEntries(R.order.map(id => [id, true])), imports: 'SPREAD' };
+    const tests = [['Your rules', mine], ['No rules', yardTest({ order: R.order, on: {}, imports: 'SPREAD' })], ['All rules', yardTest(all)], ['All rules, imports piled up', yardTest(Object.assign({}, all, { imports: 'PILE' }))]];
+    const best = Math.min(...tests.map(t => t[1].total));
+    const trow = ([name, t]) => `<tr class="${name === 'Your rules' ? 'sel' : ''}"><td>${name}</td><td class="num">${t.imp}</td><td class="num">${t.exp}</td><td class="num"><b>${t.total}</b>${t.total === best ? ' (fewest)' : ''}</td><td class="num">${t.stacks} / ${Object.keys(S.stacks).length}</td></tr>`;
+    const since = S.yardSince, kpi = (v, l) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`;
+    return head + `<fieldset><legend>Rules (top = most important)</legend><table class="grid"><tr><th>#</th><th>On</th><th>Rule: do not mix in one stack</th><th>Applies to</th><th>Order</th></tr>${rows}</table>
+        <p><button data-act="rulesDefault">Back to the default rules</button></p></fieldset>
+      <fieldset><legend>Imports and empties</legend><p>
+        <button class="sm${R.imports === 'SPREAD' ? ' on' : ''}" data-act="yardImports" data-id="SPREAD">Spread low</button>
+        <button class="sm${R.imports === 'PILE' ? ' on' : ''}" data-act="yardImports" data-id="PILE">Pile up</button>
+        &nbsp; ${R.imports === 'SPREAD' ? 'Now: each import or empty goes on the lowest stack it may use.' : 'Now: each import or empty goes on the highest stack that still has room, to keep stacks free.'}</p></fieldset>
+      <fieldset><legend>Test the rules</legend><table class="grid"><tr><th>Test</th><th class="num">Import rehandles</th><th class="num">Export rehandles</th><th class="num">Total rehandles</th><th class="num">Stacks used</th></tr>${tests.map(trow).join('')}</table>
+        <p class="note">The same 96 boxes every time, on an empty yard: 56 exports for two vessels and 40 imports (a quarter on customs hold) arrive mixed; free imports leave in random order, then the held ones; then each vessel loads in its stowage order.</p></fieldset>
+      <fieldset><legend>In this yard since the rules were last changed</legend><div class="kpis">${kpi(fmt(since.t), 'Rules changed at')}${kpi(S.stats.moves - since.moves, 'Moves since')}${kpi(S.stats.rehandles - since.rehandles, 'Rehandles since')}</div></fieldset>`;
   },
   appts() {
     const r = S.apptRule, slots = apptSlots(24), cur = slots.includes(UI.apptSlot) ? UI.apptSlot : slots.find(m => apptUsed(m) < r.cap);
@@ -1533,7 +1629,7 @@ const VIEWS = {
       ['Stowage Plan', 'תוכנית מקומות באונייה שנבנית אוטומטית: נמל אחרון למטה, כבדה מתחת לקלה, בלי לערבב 20 ו-40 רגל. ההעמסה הולכת לפי התוכנית. בנוסף לוח תרגול: אתה משבץ, המערכת חוסמת מה שבלתי אפשרי, מסמנת טעויות תכנון, ומשווה לתוכנית של המחשב.', 'מודול Vessel Autostow של N4 מתכנן העמסה לפי חוקים, ומתכנן האונייה (Vessel Planner) בודק, מזיז מכולות ביד ומתקן.', 'אונייה אחת לכולם, 3 bays בלבד. אין יציבות, קשירה, קירור או מטען מסוכן. התרגול לא נכנס להעמסה האמיתית.'],
       ['Unit Inspector', 'מכולה (Unit) נפרדת מהביקורים שלה (UFV). לכל ביקור 7 שלבי חיים עם שעה, ההזזות והחיובים שלו. מכולה ריקה שיצאה יכולה לחזור בשער עם אותו מספר וביקור חדש.', 'N4 מפריד בין Unit (זהות קבועה) ל-Unit Facility Visit (ביקור במסוף), ומשתמש ב-transit state: Advised, Inbound, EC/In, Yard, EC/Out, Loaded, Departed.', 'בפנים המכולה שומרת את הביקור הנוכחי, ולא טבלה נפרדת. אין נזקים, אטמים או שדות מותאמים לכל ביקור.'],
       ['Yard View + Unit Inventory', '4 בלוקים, 12 ערימות בכל אחד, עד 4 קומות. כל מכולה עם מיקום מדויק.', 'N4 מנהל את מלאי החצר ואת מיקום כל מכולה (Yard).', 'חצר קטנה מאוד. אין משקל/גובה ערימה מורכבים.'],
-      ['בחירת מקום אוטומטית', 'חוק אחד: מכולות ייצוא של אותה אונייה נערמות יחד.', 'מודול Expert Decking: תכנון חצר מבוסס חוקים שאפשר להגדיר.', 'רק חוק אחד וקבוע. אי אפשר עדיין להגדיר חוקים.'],
+      ['Yard Rules', '5 חוקי הפרדה (אותה אונייה, אותו נמל יעד, אותו גודל, אותו משקל, עיכוב בנפרד) שמדליקים, מכבים ומסדרים לפי חשיבות, ובחירה בין לפזר נמוך ללערום גבוה. ניסוי שמשווה את מספר ההזזות המיותרות והערימות התפוסות.', 'מודול Expert Decking: תכנון חצר מבוסס חוקים שאפשר להגדיר, עם עדיפויות, אזורים בחצר לכל סוג מטען, וחישוב מקום לכל מכולה שנכנסת.', 'חוקים קבועים מראש בלבד, אין אזורים שמגדירים ביד, אין סידור מחדש של החצר (housekeeping) בשעות שקטות, והזזה מיותרת עוברת פשוט לערימה הנמוכה באותו בלוק.'],
       ['Rehandles', 'אם המכולה לא למעלה, מזיזים את מה שמעליה וסופרים.', 'זו המטרה העיקרית של תכנון חצר טוב: פחות הזזות מיותרות.', '-'],
       ['Train Visits', 'ביקור רכבת עם אותם 5 שלבים כמו אונייה, קרונות של 40 רגל, מסילה אחת לרכבת אחת. הרכבת מביאה ייצוא ולוקחת יבוא שהוזמן לה. פריקה לפני העמסה, עגורן רכבת + עגורן חצר לכל הזזה, עיכוב מכס חוסם עלייה לרכבת.', 'ב-N4 רכבת היא עוד סוג של Carrier Visit (כמו אונייה ומשאית), עם קרונות (railcars), תכנון קרונות ותורי עבודה לרכבת (Rail).', 'אין סוגי קרונות שונים, אין משקל מקסימלי לקרון, אין סדר קרונות לפי יעד, ואין הרכבה ופירוק של רכבות. המכונה שעובדת על המסילה בנמל הדרום לא ידועה, ולכן עגורן רכבת אחד.'],
       ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין אין מצלמות/OCR.'],
@@ -1544,7 +1640,7 @@ const VIEWS = {
       ['Equipment (ECS)', 'QC, AGV, ושני ASC בכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
       ['Billing', 'תעריפים, חיובי הרמה ושער, אחסנה אחרי ימי חינם, חשבוניות, תשלום, זיכוי.', 'N4 Billing: חשבוניות, תשלומים וזיכויים.', 'אין מע"מ, מטבעות או חוזים לפי לקוח.'],
       ['טכנולוגיה', 'קובץ HTML אחד שרץ בדפדפן, בלי שרת.', 'N4 בנוי על J2EE, עם חוקים עסקיים שמוגדרים בנתונים (metadata) ולא בקוד.', 'אין משתמשים, הרשאות או מסד נתונים.'],
-      ['עוד לא קיים', 'הגדרת חוקי חצר, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
+      ['עוד לא קיים', 'סוגי עיכובים והרשאות, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
     ];
     return header('How it maps to N4', 'Concept map', 'הטבלה מסבירה מה כל מסך בסימולטור מדגים, מה הרעיון המקביל במערכת N4 האמיתית (לפי מקורות ציבוריים בלבד), ומה פישטנו. המראה הוא "בסגנון N4", לא העתק: המסכים האמיתיים לא פומביים.') +
       `<table class="grid map rtl"><tr><th>מסך</th><th>מה יש בסימולטור</th><th>ב-N4 האמיתי</th><th>מה פישטנו</th></tr>` +
@@ -1630,6 +1726,11 @@ const ACTIONS = {
   reset: () => { if (autoTimer) ACTIONS.auto(); fresh(); UI.stack = null; UI.unit = null; UI.train = null; flash('ok', 'Demo terminal reset.'); },
   arrive: id => { const v = visitById(id); if (!arrive(v)) flash('err', `${v.wait}. It can berth when that vessel departs.`); },
   start: id => startWork(visitById(id)),
+  ruleToggle: id => { S.yardRules.on[id] = !S.yardRules.on[id]; yardRulesChanged(`${YARD_RULES[id].label} ${S.yardRules.on[id] ? 'on' : 'off'}`); },
+  ruleUp: id => moveRule(id, -1),
+  ruleDown: id => moveRule(id, 1),
+  yardImports: id => { S.yardRules.imports = id === 'PILE' ? 'PILE' : 'SPREAD'; yardRulesChanged(id === 'PILE' ? 'imports and empties pile up' : 'imports and empties spread low'); },
+  rulesDefault: () => { S.yardRules = defaultYardRules(); yardRulesChanged('back to the default'); },
   apptSlot: id => { UI.apptSlot = Number(id); },
   apptCancel: id => {
     const a = S.appts.find(x => x.id === id);
@@ -1999,6 +2100,16 @@ const INFO = {
     'Quay crane': 'עגורן הרציף (QC): העגורן הגדול שמוריד ומעלה מכולות מהאונייה.',
     'Assigned to': 'לאיזו אונייה העגורן שייך עכשיו. עגורן עובד רק על האונייה שלו. free = פנוי ומחכה לאונייה הבאה.',
     'Move to': 'כפתורים להעביר את העגורן לאונייה אחרת שליד הרציף.',
+    '#': 'סדר החשיבות של החוק. 1 = הכי חשוב: כשאין ערימה שמקיימת הכל, המחשב מוותר קודם על החוק עם המספר הגבוה.',
+    'On': 'האם החוק פועל: ON = דולק, OFF = כבוי. לחיצה על הכפתור מחליפה.',
+    'Rule: do not mix in one stack': 'מה החוק לא מרשה לערבב בערימה אחת. עמידה על כפתור ה-ON/OFF של שורה מסבירה את החוק ולמה הוא חוסך הזזות.',
+    'Applies to': 'על איזה סוג מכולות החוק חל: Exports = ייצוא, Imports = יבוא, Empties = ריקות.',
+    'Order': 'כפתורים להזיז את החוק למעלה (חשוב יותר) או למטה (חשוב פחות).',
+    'Test': 'איזה סט חוקים נבדק בניסוי. השורה המודגשת היא החוקים שלך עכשיו.',
+    'Import rehandles': 'כמה הזזות מיותרות היו בניסוי כשמשאיות לקחו את מכולות היבוא.',
+    'Export rehandles': 'כמה הזזות מיותרות היו בניסוי כשהעמיסו את מכולות הייצוא על האוניות.',
+    'Total rehandles': 'סך כל ההזזות המיותרות בניסוי. פחות = טוב יותר. (fewest) = הכי מעט מכל הסטים.',
+    'Stacks used': 'כמה ערימות בחצר נתפסו בניסוי מתוך כמה יש. יותר הפרדה = יותר ערימות תפוסות, וחצר אמיתית קטנה ויקרה.',
     'Who planned': 'מי בנה את התוכנית: אתה (התרגול) או המחשב (התוכנית האוטומטית), לאותן מכולות.',
     'Boxes': 'כמה מכולות שובצו באונייה.',
     'Port-order breaks': 'כמה פעמים מכולה לנמל רחוק עומדת ישר על מכולה לנמל קרוב יותר.',
@@ -2144,6 +2255,13 @@ const INFO = {
     'Placed by you (solid)': 'מסגרת מלאה = אתה שיבצת את המכולה הזאת.',
     'Placed by the computer (dashed)': 'מסגרת מקווקווה = המחשב שיבץ אותה (אחרי Let the computer plan the rest).',
     'Allowed (green)': 'מסגרת ירוקה = מותר לשים כאן את המכולה שבחרת.',
+    'Rules (top = most important)': 'חוקי החצר, לפי סדר חשיבות. כל מכולה שנכנסת לחצר מקבלת ערימה שמקיימת כמה שיותר חוקים, ובעיקר את העליונים.',
+    'Imports and empties': 'איך מסדרים מכולות יבוא וריקות: לפזר נמוך (פחות הזזות, יותר ערימות) או לערום גבוה (פחות ערימות, יותר הזזות).',
+    'Test the rules': 'ניסוי בחצר ריקה: אותן 96 מכולות נכנסות ויוצאות, עם סטים שונים של חוקים, וסופרים הזזות מיותרות וערימות תפוסות. כך רואים במספרים מה כל חוק שווה.',
+    'In this yard since the rules were last changed': 'מה קרה בחצר האמיתית של הסימולטור מאז הפעם האחרונה ששינית חוק: כמה הזזות וכמה מהן היו מיותרות.',
+    'Rules changed at': 'מתי שינית את החוקים בפעם האחרונה (לפי שעון הנמל). ההתחלה של הנמל = Thu 06:00.',
+    'Moves since': 'כמה הזזות של מכולות בוצעו בחצר מאז שינוי החוקים.',
+    'Rehandles since': 'כמה הזזות מיותרות היו מאז שינוי החוקים: מכולות שהיה צריך להזיז רק כדי להגיע למכולה שמתחתיהן.',
     'Not allowed (grey)': 'אפור = אסור לשים כאן את המכולה שבחרת. לחיצה תסביר למה.',
   },
 };

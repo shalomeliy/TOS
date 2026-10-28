@@ -32,7 +32,7 @@ check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO
 check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -40,7 +40,7 @@ for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory'
 
 // rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'inventory', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -719,18 +719,59 @@ await page.evaluate(() => { let n = 0; while (S.visits[0].phase === 'WORKING' &&
 await page.click('[data-act="depart"][data-id="V001"]');
 s = await state();
 check(s.visits[0].phase === 'DEPARTED', 'Depart from the berth schedule');
+// version 9: yard rules. The default is one vessel per export stack and imports spread low, as before
+await page.click('[data-act="reset"]');
+await page.click('nav a[data-id="yardrules"]');
+s = await state();
+check(s.yardRules.on.VESSEL && !s.yardRules.on.POD && s.yardRules.imports === 'SPREAD' && s.yardRules.order[0] === 'VESSEL', 'default yard rules: same vessel only, spread low');
+check(await page.$eval('[data-act="ruleUp"][data-id="VESSEL"]', b => b.disabled), 'top rule cannot move up');
+const y9 = await page.evaluate(() => {
+  const R = S.yardRules, all = { order: R.order, on: Object.fromEntries(R.order.map(id => [id, true])), imports: 'SPREAD' };
+  return { none: yardTest({ order: R.order, on: {}, imports: 'SPREAD' }), all: yardTest(all), pile: yardTest(Object.assign({}, all, { imports: 'PILE' })), rows: document.querySelectorAll('fieldset table.grid')[1].rows.length };
+});
+check(y9.rows === 5 && y9.all.total < y9.none.total && y9.all.stacks > y9.none.stacks && y9.pile.stacks < y9.all.stacks && y9.pile.imp > y9.all.imp,
+  'rule test: all rules fewer rehandles but more stacks, piling up saves stacks and costs rehandles: ' + JSON.stringify(y9));
+// switching a rule on is logged, restarts the counters, and the next export keeps to it
+await page.click('[data-act="ruleToggle"][data-id="POD"]');
+s = await state();
+check(s.yardRules.on.POD && s.log.at(-1).msg.startsWith('Yard rules: Same port of discharge on') && s.yardSince.rehandles === s.stats.rehandles, 'POD rule switched on and logged');
+const pod9 = await page.evaluate(() => {
+  const v = S.visits[1], key = S.units[Object.keys(S.units).find(id => S.units[id].visit === v.id && S.units[id].category === 'EXPORT')].pos;
+  const pod = S.stacks[key].map(id => S.units[id].pod)[0] % 3 + 1;     // a port no box in that stack goes to
+  const u = { id: 'TEST', category: 'EXPORT', visit: v.id, pod, weight: 10, iso: '22G1', holds: [] };
+  const to = planSlot(u);
+  return { breaks: stackBreaks(u, to, rulesFor(u)), mixed: S.stacks[to].some(id => S.units[id].pod !== pod) };
+});
+check(!pod9.breaks.length && !pod9.mixed, 'an export goes to a stack with its own port only: ' + JSON.stringify(pod9));
+// order: moving a rule down swaps it with the next one
+await page.click('[data-act="ruleDown"][data-id="VESSEL"]');
+s = await state();
+check(s.yardRules.order[0] === 'POD' && s.yardRules.order[1] === 'VESSEL', 'rule moved down');
+// pile up: an import goes on a stack that already has boxes
+await page.click('[data-act="yardImports"][data-id="PILE"]');
+const pile9 = await page.evaluate(() => { const u = { id: 'TEST', category: 'IMPORT', visit: null, weight: 10, iso: '22G1', holds: [] }; const to = planSlot(u); return { h: S.stacks[to].length, spread: (S.yardRules.imports = 'SPREAD', S.stacks[planSlot(u)].length), back: (S.yardRules.imports = 'PILE') }; });
+check(pile9.h > 0 && pile9.spread === 0, 'pile up puts an import on a started stack, spread low on an empty one: ' + JSON.stringify(pile9));
+noTip = await auditTips('v9');
+check(noTip.length === 0, 'tooltips missing after yard rules:\n  ' + noTip.join('\n  '));
+await page.click('nav a[data-id="yardrules"]');
+await page.click('[data-act="rulesDefault"]');
+s = await state();
+check(s.yardRules.order[0] === 'VESSEL' && !s.yardRules.on.POD && s.yardRules.imports === 'SPREAD', 'back to the default rules');
 // an older save gets no appointments and the rule switched on
 await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), readFileSync(resolve('tools/fixtures/save-v4.json'), 'utf8'));
 await page.reload();
 s = await state();
 check(s.ver === CUR_VER && s.appts.length === 0 && s.apptRule.required && s.apptRule.cap === 3, 'old save gets appointments, none booked');
+check(s.yardRules.on.VESSEL && !s.yardRules.on.POD && s.yardRules.imports === 'SPREAD' && s.yardSince, 'old save gets the default yard rules');
+await page.click('nav a[data-id="yardrules"]');
+check((await page.textContent('#content')).includes('Your rules'), 'yard rules screen works on an old save');
 await page.click('nav a[data-id="appts"]');
 check((await page.textContent('#content')).includes('No appointments yet'), 'appointments screen works on an old save');
 await page.click('[data-act="reset"]');
 
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yardrules', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }
