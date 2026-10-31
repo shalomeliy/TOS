@@ -32,7 +32,7 @@ check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO
 check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -40,7 +40,7 @@ for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules'
 
 // rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -815,6 +815,79 @@ noTip = await auditTips('v10');
 check(noTip.length === 0, 'tooltips missing after holds:\n  ' + noTip.join('\n  '));
 await page.click('nav a[data-id="holds"]');
 await page.click('[data-act="holdRole"][data-id="CUSTOMS"]');
+// ---------- version 11: reefers and dangerous goods ----------
+// the demo keeps every rule: reefers on socket stacks, hazardous boxes apart
+s = await state();
+const yardOf = st => Object.values(st.units).filter(u => u.state === 'YARD' && u.pos);
+check(yardOf(s).filter(u => u.reefer).length >= 1 && yardOf(s).filter(u => u.reefer).every(u => u.pos.split('-')[1] === '06'), 'every reefer in the yard is on a socket stack (bay 06)');
+check(yardOf(s).filter(u => u.dg).length >= 3 && s.specRules.REEFER && s.specRules.DG && await page.evaluate(() => dgClashes().length === 0), 'the demo has hazardous boxes and no segregation warning');
+check(await page.evaluate(() => segNeed('3', '5.1') === 2 && segNeed('5.1', '3') === 2 && segNeed('3', '8') === 0 && segNeed('4.1', '8') === 1 && stackDist('A-01-1', 'A-04-2') === 3 && stackDist('A-01-1', 'B-01-1') === 99),
+  'segregation table and yard distance');
+await page.click('nav a[data-id="reefer"]');
+check((await page.textContent('#content')).includes('Reefer monitor') && (await page.$$('#content [data-act="specRule"].rule-on')).length === 2, 'reefer screen shows both rules on');
+// switch both rules off from the screen, then a reefer and an oxidizer (5.1) come in for V002 by truck
+await page.click('[data-act="specRule"][data-id="REEFER"]');
+await page.click('[data-act="specRule"][data-id="DG"]');
+s = await state();
+check(!s.specRules.REEFER && !s.specRules.DG && s.log.at(-1).msg === 'DG segregation rule off', 'both rules switched off and logged');
+await page.evaluate(() => { S.apptRule.required = false; let n = 0; while ((!isGateOpen(S.clock + 60) || !isWorkTime(S.clock) || !isWorkTime(S.clock + 480)) && n++ < 800) cycle(); render(); });
+const v11 = await page.evaluate(() => S.visits.find(v => !['DEPARTED', 'COMPLETE'].includes(v.phase)).id);
+await page.click('nav a[data-id="gate"]');
+const gateIn = async (iso, dg, set) => {
+  await page.selectOption('[data-form="gatein"] select[name="kind"]', 'EXPORT');
+  await page.selectOption('[data-form="gatein"] select[name="visit"]', v11);
+  await page.selectOption('[data-form="gatein"] select[name="iso"]', iso);
+  await page.selectOption('[data-form="gatein"] select[name="dg"]', dg);
+  await page.selectOption('[data-form="gatein"] select[name="set"]', set);
+  await page.click('[data-form="gatein"] button');
+};
+await gateIn('22R1', '', '4');
+await gateIn('22G1', '5.1', '-18');
+s = await state();
+const rf11 = s.gate.at(-2).unit, ox11 = s.gate.at(-1).unit;
+check(s.units[rf11].reefer && s.units[rf11].reefer.set === 4 && !s.units[rf11].dg && s.units[ox11].dg === '5.1' && !s.units[ox11].reefer, 'gate takes a reefer set point and an IMDG class');
+await page.click('[data-act="cycle"]');
+await page.click('[data-act="cycle"]');
+s = await state();
+check(s.units[rf11].state === 'YARD' && s.units[ox11].state === 'YARD', 'both boxes are in the yard');
+// with the rule off this reefer may land anywhere; put it on a stack with no socket to see the warming (as a planner could by hand)
+await page.evaluate(id => { const u = S.units[id]; if (isPowered(u.pos)) { const to = Object.keys(S.stacks).find(k => k[0] === u.pos[0] && !isPowered(k) && heightOf(k) < MAX_TIER); retrieve(u); placeUnit(u, to); } }, rf11);
+const rb11 = (await state()).units[rf11].reefer;
+for (let i = 0; i < 8; i++) await page.click('[data-act="cycle"]');
+s = await state();
+check(s.units[rf11].reefer.temp === rb11.temp + 4 && s.units[rf11].reefer.off === rb11.off + 120 && s.units[rf11].reefer.alarm && s.log.some(e => e.area === 'REEFER' && e.msg.startsWith('ALARM: ' + rf11)), 'a reefer without power warms half a degree a cycle and raises an alarm above set point + 3');
+const clash11 = await page.evaluate(id => dgClashes().filter(c => c.a.id === id || c.b.id === id).length, ox11);
+await page.click('nav a[data-id="reefer"]');
+const txt11 = await page.textContent('#content');
+check(txt11.includes('NO POWER') && txt11.includes('ALARM'), 'reefer monitor shows NO POWER and ALARM');
+if (clash11) check(txt11.includes('TOO CLOSE') && s.log.some(e => e.area === 'DG' && e.msg.includes(ox11)), 'segregation warning shown and logged for the oxidizer');
+// Move: a yard shift takes each box to a stack that keeps the rules, even though the rules are off for new boxes
+const chg11 = (await state()).charges.filter(c => c.unit === rf11).length;
+await page.click(`[data-act="shift"][data-id="${rf11}"]`);
+if (await page.$(`[data-act="shift"][data-id="${ox11}"]`)) await page.click(`[data-act="shift"][data-id="${ox11}"]`);
+s = await state();
+check(s.wis.filter(w => w.kind === 'YARD_SHIFT' && w.status === 'PLANNED').length === (clash11 ? 2 : 1) && s.units[rf11].transit === 'YARD', 'Move creates a yard shift; the box stays in YARD');
+for (let i = 0; i < 3; i++) await page.click('[data-act="cycle"]');
+s = await state();
+check(s.units[rf11].pos.split('-')[1] === '06' && s.units[rf11].reefer.off === 0 && s.units[rf11].reefer.temp < 8, 'after the shift the reefer is on a socket and cools down');
+check(await page.evaluate(() => dgClashes().length === 0) && s.wis.filter(w => w.kind === 'YARD_SHIFT').every(w => w.status === 'COMPLETE' && w.dest), 'after the shifts no segregation warning is left');
+check(s.charges.filter(c => c.unit === rf11).length === chg11, 'a yard shift is not charged to the line');
+// rules back on: a new reefer goes to a socket by itself, a new 5.1 keeps away from the class 3 and 8 boxes
+await page.click('[data-act="specRule"][data-id="REEFER"]');
+await page.click('[data-act="specRule"][data-id="DG"]');
+await page.click('nav a[data-id="gate"]');
+await gateIn('45R1', '', '13');
+await gateIn('22G1', '5.1', '-18');
+s = await state();
+const rf11b = s.gate.at(-2).unit, ox11b = s.gate.at(-1).unit;
+for (let i = 0; i < 2; i++) await page.click('[data-act="cycle"]');
+s = await state();
+check(s.units[rf11b].state === 'YARD' && s.units[rf11b].pos.split('-')[1] === '06' && s.units[rf11b].reefer.set === 13, 'with the rule on, a new reefer goes to a socket stack');
+check(s.units[ox11b].state === 'YARD' && await page.evaluate(() => dgClashes().length === 0), 'with the rule on, a new oxidizer keeps its distance');
+await page.evaluate(id => { UI.unit = id; UI.page = 'inspector'; render(); }, rf11b);
+check((await page.textContent('#content')).includes('Set point 13 C'), 'unit inspector shows the reefer set point');
+noTip = await auditTips('v11');
+check(noTip.length === 0, 'tooltips missing after reefers and DG:\n  ' + noTip.join('\n  '));
 // an older save gets no appointments and the rule switched on
 await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), readFileSync(resolve('tools/fixtures/save-v4.json'), 'utf8'));
 await page.reload();
@@ -822,6 +895,9 @@ s = await state();
 check(s.ver === CUR_VER && s.appts.length === 0 && s.apptRule.required && s.apptRule.cap === 3, 'old save gets appointments, none booked');
 check(s.yardRules.on.VESSEL && !s.yardRules.on.POD && s.yardRules.imports === 'SPREAD' && s.yardSince, 'old save gets the default yard rules');
 check(s.holdRole === 'CUSTOMS' && Array.isArray(s.holdLog) && Object.values(s.units).filter(u => u.holds.length).every(u => s.holdLog.some(e => e.unit === u.id && e.act === 'APPLIED')), 'old save gets a hold history for the holds it had');
+check(s.specRules && s.specRules.REEFER && s.specRules.DG && Object.values(s.units).every(u => u.dg !== undefined && (u.iso[2] === 'R') === !!u.reefer), 'old save gets the reefer and DG rules, every reefer gets a set point');
+await page.click('nav a[data-id="reefer"]');
+check((await page.textContent('#content')).includes('Power sockets') && !(await page.$('.flash.err')), 'reefer screen works on an old save');
 await page.click('nav a[data-id="holds"]');
 check((await page.textContent('#content')).includes('Hold types and who may release them') && !(await page.$('.flash.err')), 'holds screen works on an old save');
 await page.click('nav a[data-id="yardrules"]');
@@ -832,7 +908,7 @@ await page.click('[data-act="reset"]');
 
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yardrules', 'holds', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yardrules', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }

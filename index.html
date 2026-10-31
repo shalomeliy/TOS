@@ -8,7 +8,7 @@
 :root{
   --face:#d4d0c8; --face-lt:#e6e3dc; --hl:#ffffff; --shadow:#808080; --dark:#404040;
   --title1:#0a246a; --title2:#3a6ea5; --sel:#316ac5; --ink:#000; --muted:#555;
-  --exp:#3f8f5a; --imp:#c0702e; --mty:#8a8a8a; --hold:#c0262d; --win:#fff;
+  --exp:#3f8f5a; --imp:#c0702e; --mty:#8a8a8a; --hold:#c0262d; --pwr:#2a6fc0; --win:#fff;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
@@ -128,6 +128,13 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 .tier.EXPORT{background:var(--exp)}.tier.IMPORT{background:var(--imp)}.tier.EMPTY{background:var(--mty)}
 .tier.held{background-image:repeating-linear-gradient(45deg,transparent 0 3px,var(--hold) 3px 5px)}
 .stack .lbl{position:absolute;top:1px;left:2px;font-size:9px;color:#666}
+.stack.pwr{border-bottom:4px solid var(--pwr)}
+.tier{position:relative}.tier.rf::before{content:'';position:absolute;left:1px;top:1px;width:5px;height:7px;background:var(--pwr)}
+.tier.dg::after{content:'';position:absolute;right:2px;top:1px;width:6px;height:6px;background:#000;transform:rotate(45deg)}
+.tier.alarm{outline:2px solid var(--hold)}
+.legend i.lg-pwr{background:#f2f2f2;border-bottom:4px solid var(--pwr)}.legend i.lg-rf{background:var(--imp);border-left:5px solid var(--pwr)}
+.legend i.lg-dg{background:#fff;border:1px solid #999;position:relative}.legend i.lg-dg::after{content:'';position:absolute;left:3px;top:3px;width:6px;height:6px;background:#000;transform:rotate(45deg)}
+.segt td{text-align:center}
 .legend{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 10px}
 .legend i{display:inline-block;width:12px;height:10px;margin-right:4px;vertical-align:-1px;border:1px solid #0004}
 .logpane{margin:0 4px 4px;height:92px;overflow:auto;padding:2px 6px;font-family:"Lucida Console",Consolas,monospace;font-size:11px}
@@ -207,8 +214,8 @@ const BLOCKS = [
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
 // shown top right; bump on every push: <roadmap version>.<fix number inside it>
-const APP_VERSION = 'v10.1', APP_DATE = '31-10-2026';
-const STATE_VER = 10;                            // bump when the saved shape changes, and add a MIGRATE step
+const APP_VERSION = 'v11.0', APP_DATE = '31-10-2026';
+const STATE_VER = 11;                            // bump when the saved shape changes, and add a MIGRATE step
 // truck appointments: one-hour slots; a truck is on time from APPT_GRACE minutes before its hour to APPT_GRACE after it ends
 // holds (version 10): every hold type belongs to one authority, and only that role may put it on or take it off.
 // Any hold stops a box leaving the terminal inland (gate out, train). u.holds keeps the type codes; S.holdLog keeps who, when and why
@@ -220,6 +227,29 @@ const HOLD_TYPES = {
   DEBT: { label: 'Debt', he: 'חוב', role: 'FINANCE', reasons: ['Unpaid storage', 'Unpaid invoice', 'No guarantee on file'] },
   DAMAGE: { label: 'Damage', he: 'נזק', role: 'TERMINAL', reasons: ['Damaged box: survey', 'Seal broken', 'Leak'] },
 };
+// reefers and dangerous goods (version 11). The last bay of every block has power sockets: 2 stacks x 4 tiers = 8 a block.
+// A reefer in the yard without a socket warms up half a degree every cycle; more than REEFER_ALARM above its set point is an alarm.
+// On the ship, the train or the truck it runs on their power, so its temperature holds
+const REEFER_BAY = 6, REEFER_ALARM = 3;
+const isPowered = key => !!key && Number(key.split('-')[1]) === REEFER_BAY;
+const isReefer = u => u.iso[2] === 'R';
+const REEFER_SETS = { '-18': 'Frozen (meat, fish)', '4': 'Chilled (dairy, fruit)', '13': 'Bananas' };
+// IMDG classes the yard accepts (1 explosives and 7 radioactive never stay in the yard: they go straight from the ship to a truck)
+const DG_CLASSES = {
+  '2.1': { label: 'Flammable gas', he: 'גז דליק (גז בישול)' }, '3': { label: 'Flammable liquid', he: 'נוזל דליק (דלק, צבע)' },
+  '4.1': { label: 'Flammable solid', he: 'מוצק דליק (גפרורים)' }, '5.1': { label: 'Oxidizer', he: 'מחמצן, חומר שמזין שריפה (דשן)' },
+  '6.1': { label: 'Toxic', he: 'רעיל (חומרי הדברה)' }, '8': { label: 'Corrosive', he: 'מאכל (חומצות)' }, '9': { label: 'Miscellaneous', he: 'שונות (סוללות ליתיום)' },
+};
+// in class order (Object.keys would put '3', '8', '9' first, since they look like array indexes)
+const DG_LIST = ['2.1', '3', '4.1', '5.1', '6.1', '8', '9'];
+// simplified from the public IMDG segregation table, for teaching only. 1 = "away from", 2 = "separated from"; a pair not listed may share a stack
+const SEG_PAIRS = { '2.1|3': 2, '2.1|4.1': 1, '2.1|5.1': 2, '2.1|8': 1, '3|5.1': 2, '4.1|5.1': 1, '4.1|8': 1, '5.1|6.1': 1, '5.1|8': 2 };
+// yard distance between two stacks = the larger of the bay gap and the row gap in one block; another block is always far enough
+const SEG_LEVELS = { 1: { label: 'Away from', min: 2, he: 'לא באותה ערימה ולא בערימה צמודה (צריך לפחות ערימה אחת ביניהן)' },
+  2: { label: 'Separated from', min: 3, he: 'לפחות שתי ערימות ביניהן באותו בלוק, או בבלוק אחר' } };
+const segNeed = (a, b) => a && b ? SEG_PAIRS[[a, b].sort().join('|')] || 0 : 0;
+const stackDist = (a, b) => { const [ba, xa, ya] = a.split('-'), [bb, xb, yb] = b.split('-');
+  return ba !== bb ? 99 : Math.max(Math.abs(xa - xb), Math.abs(ya - yb)); };
 const APPT_GRACE = 30, APPT_KINDS = { 'RECEIVE EXPORT': 'Bring an export', 'RECEIVE EMPTY': 'Return an empty', DELIVER: 'Pick up an import' };
 // each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
 const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
@@ -229,11 +259,11 @@ const SHIP = { bays: { '01': '20', '03': '20', '06': '40' }, rows: 4, tiers: ['0
 const DAYS = ['Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed'];   // T0 is Thursday 06:00 port time
 const LINES = { BLU: 'Blue Ocean Lines', RED: 'Red Anchor Shipping', GRN: 'Green Wave Carriers' };
 const OWNER = { BLU: 'BOLU', RED: 'RASU', GRN: 'GWCU' };
-const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer" };
+const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer", '45R1': "40' high cube reefer" };
 const PAGES = [
   ['Terminal', [['overview', 'Overview']]],
   ['Vessel', [['vessels', 'Vessel Visits'], ['berth', 'Berth Schedule'], ['stowage', 'Stowage Plan']]],
-  ['Yard', [['yard', 'Yard View'], ['yardrules', 'Yard Rules'], ['inventory', 'Unit Inventory'], ['holds', 'Holds & Permissions'], ['inspector', 'Unit Inspector']]],
+  ['Yard', [['yard', 'Yard View'], ['yardrules', 'Yard Rules'], ['inventory', 'Unit Inventory'], ['holds', 'Holds & Permissions'], ['reefer', 'Reefers & Hazardous'], ['inspector', 'Unit Inspector']]],
   ['Gate', [['gate', 'Gate Transactions'], ['appts', 'Truck Appointments']]],
   ['Rail', [['rail', 'Train Visits']]],
   ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
@@ -250,6 +280,7 @@ const PAGE_TIPS = {
   yardrules: 'חוקי החצר: לפי מה המחשב בוחר לכל מכולה ערימה בחצר, ובאיזה סדר חשיבות. כאן גם רואים במספרים כמה הזזות מיותרות כל בחירה גורמת.',
   inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן אפשר גם לשחרר עיכוב.',
   holds: 'עיכובים והרשאות: מי שם עיכוב על מכולה ולמה, מי רשאי לשחרר כל סוג, וכל ההיסטוריה.',
+  reefer: 'מכולות קירור ומטען מסוכן: שקעי החשמל בחצר, הטמפרטורה של כל מכולת קירור, וחוקי המרחק בין חומרים מסוכנים.',
   inspector: 'מכולה אחת לעומק: מי היא, כל הביקורים שלה בנמל, ושלבי החיים של כל ביקור.',
   gate: 'השער: משאיות שמביאות מכולות, או באות לקחת מכולות.',
   appts: 'תורים למשאיות: כל משאית מזמינה מראש שעה להגיע לשער, ובכל שעה יש מקום רק לכמה משאיות.',
@@ -262,6 +293,7 @@ const PAGE_TIPS = {
 };
 // per-screen tooltip on the screen title: what you see here, and what you can do here
 const SCREEN_TIPS = {
+  reefer: 'מה רואים: כמה שקעי חשמל יש בכל בלוק וכמה תפוסים, כל מכולות הקירור בחצר עם הטמפרטורה שלהן, כל המכולות עם מטען מסוכן, ואזהרות על מכולות שעומדות קרוב מדי. מה אפשר לעשות: לכבות או להדליק את שני החוקים כדי לראות מה קורה בלעדיהם, ולשלוח מכולה בעייתית למקום תקין בכפתור Move.',
   overview: 'מה רואים: מפה של הנמל (ים, שני רציפים, עגורנים, 4 בלוקים ומסילת רכבת) וסיכום של כל הנמל: כמה מכולות בחצר, כמה אוניות ברציף, כמה עבודה פתוחה וכמה כסף. מה אפשר לעשות: רק להסתכל. הפעולות עצמן נעשות במסכים האחרים.',
   vessels: 'מה רואים: כל האוניות, ליד איזה רציף כל אחת, באיזה שלב היא (בדרך, ברציף, בעבודה, סיימה, יצאה), וכמה מקומות בתוכנית ההעמסה כבר מלאים. מה אפשר לעשות: ליצור אונייה חדשה ולבחור לה רציף, להביא אותה לרציף, להתחיל עבודה, לפתוח את תוכנית ההעמסה ולשלוח אותה לדרך.',
   berth: 'מה רואים: ציר זמן של יומיים לכל רציף (27 ו-28). כל פס הוא אונייה: מתי היא מגיעה ועד מתי היא תתפוס את הרציף. מקווקו = עוד בדרך (תכנון), מלא = כבר ליד הרציף, אדום עם ! = שתי אוניות רוצות את אותו רציף באותו זמן. שבת מסומנת בפסים סגולים, והקו האדום הוא עכשיו. מתחת: טבלת האוניות וטבלת עגורני הרציף. מה אפשר לעשות: לבחור לכל אונייה 1 או 2 עגורני רציף, להעביר אונייה שעוד בדרך לרציף השני, להקדים או לדחות את ההגעה שלה בשעה, ולהעביר עגורן רציף מאונייה לאונייה.',
@@ -333,6 +365,11 @@ const TIPS = {
   release: el => { const t = HOLD_TYPES[(el.dataset.id || '').split(':')[1]] || HOLD_TYPES.CUSTOMS;
     return `משחרר את עיכוב ה${t.he} מהמכולה. רק ${HOLD_ROLES_HE[t.role]} רשאי לשחרר אותו. אתה פועל עכשיו בתור ${HOLD_ROLES_HE[S.holdRole]}${t.role === S.holdRole ? ', אז זה יעבוד' : ', אז הניסיון יידחה וייכתב בהיסטוריה'}. כשאין למכולה עוד עיכובים, משאית או רכבת יכולות לקחת אותה.`; },
   holdRole: el => `לפעול מעכשיו בתור ${HOLD_ROLES_HE[el.dataset.id]}. כל עיכוב שייך לגוף אחד, ורק הוא רשאי לשים ולשחרר אותו. ${Object.values(HOLD_TYPES).filter(t => t.role === el.dataset.id).map(t => 'ה' + HOLD_ROLES_HE[t.role] + ' אחראי על עיכוב ' + t.he + '.').join(' ')}`,
+  specRule: el => { const on = S.specRules[el.dataset.id];
+    return (on ? 'החוק דולק. לחיצה מכבה אותו. ' : 'החוק כבוי. לחיצה מדליקה אותו. ') + (el.dataset.id === 'REEFER'
+      ? 'מכולות קירור לשקעים: כל מכולת קירור שנכנסת לחצר נשלחת לערימה עם שקעי חשמל, ומכולות רגילות לא תופסות את הערימות האלה כל עוד יש מקום אחר. כבוי = מכולת קירור יכולה לעמוד בלי חשמל ולהתחמם.'
+      : 'הפרדת חומרים מסוכנים: מכולה עם מטען מסוכן נשלחת לערימה רחוקה מספיק מכל חומר שאסור לעמוד לידו, לפי הטבלה. כבוי = שני חומרים כאלה יכולים לעמוד צמוד, ותופיע אזהרה.'); },
+  shift: 'יוצר משימת הזזה בחצר (Yard shift): עגורן החצר ייקח את המכולה לערימה תקינה. מכולת קירור תגיע לשקע, מכולה עם מטען מסוכן תתרחק ממה שאסור לעמוד לידו. הנמל עושה את זה בעצמו, בלי חיוב לחברת הספנות.',
   showGone: 'מציג גם מכולות שכבר יצאו מהנמל.',
   showDone: 'מציג גם משימות שכבר הסתיימו.',
   invoice: 'מאגד את כל החיובים הפתוחים לחשבונית אחת לכל חברת ספנות.',
@@ -618,7 +655,7 @@ function fresh() {
   S = {
     ver: STATE_VER, clock: 0, auto: false, workOn: true, rng: 20261022,
     seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0, appt: 0, hold: 0 },
-    units: {}, stacks: {}, visits: [], trains: [], holdLog: [], holdRole: 'CUSTOMS', appts: [], apptRule: { required: true, cap: 3 }, yardRules: defaultYardRules(), yardSince: { t: 0, rehandles: 0, moves: 0 }, wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
+    units: {}, stacks: {}, visits: [], trains: [], holdLog: [], holdRole: 'CUSTOMS', appts: [], apptRule: { required: true, cap: 3 }, yardRules: defaultYardRules(), yardSince: { t: 0, rehandles: 0, moves: 0 }, specRules: { REEFER: true, DG: true }, dgWarn: [], wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
     stats: { rehandles: 0, moves: 0 },
     tariff: { lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 },
   };
@@ -631,13 +668,16 @@ function fresh() {
   // seed: an earlier vessel left imports in the yard, some under customs hold
   const v1 = addVisit('MV Training Star', 'BLU', 60, 8, '27', 2);
   const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6, '28', 1);
+  // dangerous goods on the first vessel (version 11): a flammable liquid and an oxidizer, which must be kept apart in the yard
+  Object.values(S.units).filter(u => u.visit === v1.id).forEach((u, i) => { u.dg = { 1: '3', 5: '5.1' }[i] || null; });
   for (let i = 0; i < 6; i++) {
     const u = addUnit({ line: i % 2 ? 'GRN' : 'BLU', category: 'IMPORT', iso: i % 3 ? '22G1' : '45G1', state: 'YARD', inTime: -5 * 1440 - i * 90 });
     if (i === 1 || i === 4) putHold(u, 'CUSTOMS', 'Customs inspection', u.inTime);
     placeUnit(u, planSlot(u));
   }
   for (let i = 0; i < 10; i++) {
-    const u = addUnit({ line: 'RED', category: 'EXPORT', iso: i % 4 ? '22G1' : '45G1', visit: v2.id, state: 'YARD', inTime: -2 * 1440 + i * 60 });
+    const u = addUnit({ line: 'RED', category: 'EXPORT', iso: i % 4 ? '22G1' : i === 4 ? '45R1' : '45G1', visit: v2.id, state: 'YARD', inTime: -2 * 1440 + i * 60, set: -18,
+      dg: { 2: '3', 6: '5.1', 8: '8' }[i] || null });
     placeUnit(u, planSlot(u));
   }
   for (let i = 0; i < 4; i++) {
@@ -655,8 +695,11 @@ function fresh() {
   syncTransit();
 }
 function addUnit(p) {
-  const u = Object.assign({ holds: [], visit: null, train: null, car: null, pos: null, inTime: null, outTime: null, wi: null, weight: 0, pod: null, vslot: null }, p);
+  const { set, ...rest } = p;
+  const u = Object.assign({ holds: [], visit: null, train: null, car: null, pos: null, inTime: null, outTime: null, wi: null, weight: 0, pod: null, vslot: null, dg: null, reefer: null }, rest);
   u.id = newCntr(u.line);
+  // a reefer keeps its set point and its temperature now; without one given, every other reefer is frozen, the rest chilled
+  if (isReefer(u)) { const sp = set != null && REEFER_SETS[set] ? Number(set) : S.seq.cntr % 2 ? -18 : 4; u.reefer = { set: sp, temp: sp, off: 0, alarm: false }; }
   u.weight = u.category === 'EMPTY' ? 2.2 : Math.round((8 + rand() * 18) * 10) / 10;
   if (u.category === 'EXPORT' && !u.pod) u.pod = 1 + Math.floor(rand() * 3);
   const ufv = openVisit(u, u.state === 'ON_VESSEL' ? 'Vessel ' + (visitById(u.visit)?.vessel || u.visit) : u.state === 'ON_TRAIN' ? 'Train ' + (trainById(u.train)?.name || u.train)
@@ -695,6 +738,15 @@ function load() {
 }
 // one step per saved version; each step brings a save up by one version
 const MIGRATE = {
+  10(s) {   // version 10 -> 11: reefers and dangerous goods. Old reefers get a set point at their present temperature; no box was hazardous
+    s.specRules = s.specRules || { REEFER: true, DG: true };
+    s.dgWarn = s.dgWarn || [];
+    Object.values(s.units).forEach(u => {
+      u.dg = u.dg || null;
+      if (u.iso && u.iso[2] === 'R' && !u.reefer) u.reefer = { set: -18, temp: -18, off: 0, alarm: false };
+      if (u.reefer === undefined) u.reefer = null;
+    });
+  },
   9(s) {   // version 9 -> 10: holds with a type, a reason and a history. Old holds were all customs; their reason was not kept
     s.holdLog = s.holdLog || [];
     s.holdRole = s.holdRole || 'CUSTOMS';
@@ -809,7 +861,7 @@ function stackBreaks(u, key, rules) {
 // never given up to keep less important ones; the base only decides between stacks that break the same rules:
 // exports top up a started stack before opening a new one; imports and empties spread low (or pile up)
 function planSlot(u, excludeKey) {
-  const blocks = BLOCKS.filter(b => b.use.includes(u.category)).map(b => b.id), rules = rulesFor(u);
+  const blocks = BLOCKS.filter(b => b.use.includes(u.category)).map(b => b.id), rules = rulesFor(u), dgs = dgSpots(u);
   let best = null, bestScore = Infinity;
   for (const key of Object.keys(S.stacks)) {
     if (!blocks.includes(key[0]) || key === excludeKey) continue;
@@ -818,9 +870,69 @@ function planSlot(u, excludeKey) {
     let score = u.category === 'EXPORT' ? (h === 0 ? 5 : h * 0.5) : S.yardRules.imports === 'PILE' ? (h === 0 ? MAX_TIER : MAX_TIER - 1 - h) : h;
     const br = stackBreaks(u, key, rules);
     br.forEach(r => { score += 10 * 2 ** (rules.length - 1 - rules.indexOf(r)); });
+    score += specialCost(u, key, dgs);
     if (score < bestScore) { bestScore = score; best = key; }
   }
   return best;
+}
+// version 11: the reefer and DG rules come before every yard rule. A reefer away from a socket, or a hazardous box too close
+// to one it must be kept from, costs more than all the yard rules together; it still goes there when nothing else is free.
+// Other boxes stay off the socket stacks while they can, to keep the sockets for reefers
+function dgSpots(u) {
+  if (!u.dg || !S.specRules?.DG) return [];
+  const out = [];
+  for (const x of Object.values(S.units)) {
+    if (x === u || !x.dg || !segNeed(u.dg, x.dg)) continue;
+    const at = x.state === 'YARD' && x.pos ? x.pos : S.wis.find(w => w.unit === x.id && w.status === 'DISPATCHED' && w.dest && w.kind !== 'LOAD')?.dest;
+    if (at) out.push({ x, at, level: segNeed(u.dg, x.dg) });
+  }
+  return out;
+}
+const dgTooClose = (key, dgs) => dgs.filter(d => stackDist(key, d.at) < SEG_LEVELS[d.level].min);
+function specialCost(u, key, dgs) {
+  let c = 0;
+  if (S.specRules?.REEFER) c += isReefer(u) ? (isPowered(key) ? 0 : 1000) : isPowered(key) ? 6 : 0;
+  return c + 1000 * dgTooClose(key, dgs || []).length;
+}
+// every pair of hazardous boxes in the yard that stand closer than the table allows
+function dgClashes() {
+  const dg = Object.values(S.units).filter(u => u.dg && u.state === 'YARD' && u.pos), out = [];
+  for (let i = 0; i < dg.length; i++) for (let j = i + 1; j < dg.length; j++) {
+    const a = dg[i], b = dg[j], level = segNeed(a.dg, b.dg), d = stackDist(a.pos, b.pos);
+    if (level && d < SEG_LEVELS[level].min) out.push({ a, b, level, d });
+  }
+  return out;
+}
+// once a cycle: reefer temperatures, and a log line for every new reefer or DG problem
+function reeferTick() {
+  for (const u of Object.values(S.units)) {
+    const r = u.reefer;
+    if (!r) continue;
+    if (u.state !== 'YARD' || !u.pos) { r.off = 0; continue; }
+    if (isPowered(u.pos)) { r.off = 0; r.temp = Math.max(r.set, r.temp - 1); }
+    else {
+      if (!r.off) log('REEFER', `${u.id} in ${u.pos} has no power socket: it starts to warm up`);
+      r.off += CYCLE_MIN; r.temp = Math.round((r.temp + 0.5) * 10) / 10;
+    }
+    const alarm = r.temp > r.set + REEFER_ALARM;
+    if (alarm && !r.alarm) log('REEFER', `ALARM: ${u.id} is at ${r.temp} C, set point ${r.set} C`);
+    r.alarm = alarm;
+  }
+  const now = dgClashes().map(c => `${c.a.id}|${c.b.id}`);
+  now.filter(k => !S.dgWarn.includes(k)).forEach(k => { const [a, b] = k.split('|');
+    log('DG', `WARNING: ${a} (class ${S.units[a].dg}) and ${b} (class ${S.units[b].dg}) are too close: ${SEG_LEVELS[segNeed(S.units[a].dg, S.units[b].dg)].label.toLowerCase()} needed`); });
+  S.dgWarn = now;
+}
+// a box that breaks a reefer or DG rule where it stands, and where a yard shift would take it now (null = nowhere better)
+// a reefer off power or a DG box too close to another is a fact in the yard, whether the rules are on or not
+const offPower = u => !!u.reefer && u.state === 'YARD' && !!u.pos && !isPowered(u.pos);
+const dgBad = u => !!u.dg && u.state === 'YARD' && dgClashes().some(c => c.a === u || c.b === u);
+// a yard shift always looks for a stack that keeps both rules, even when they are switched off for new boxes
+function shiftTarget(u) {
+  const keep = S.specRules;
+  S.specRules = { REEFER: true, DG: true };
+  try { const to = planSlot(u, u.pos); return to && specialCost(u, to, dgSpots(u)) < 1000 ? to : null; }
+  finally { S.specRules = keep; }
 }
 // the same arrivals and departures on an empty scratch yard, for a set of rules: how many rehandles, how many stacks.
 // 56 exports for two vessels and 40 imports (a quarter on hold) arrive mixed; the free imports leave in random order,
@@ -867,7 +979,8 @@ function retrieve(u, wi) {
   while (st[st.length - 1] !== u.id) {
     const topId = st.pop(), top = S.units[topId];
     const sameBlock = Object.keys(S.stacks).filter(k => k[0] === u.pos[0] && k !== u.pos && heightOf(k) < MAX_TIER);
-    const to = sameBlock.sort((a, b) => heightOf(a) - heightOf(b))[0] || planSlot(top, u.pos);
+    const dgs = dgSpots(top), cost = k => heightOf(k) + specialCost(top, k, dgs);
+    const to = sameBlock.sort((a, b) => cost(a) - cost(b))[0] || planSlot(top, u.pos);
     placeUnit(top, to);
     n++;
     log('YARD', `Rehandle: ${topId} moved ${u.pos} -> ${to} to dig out ${u.id}`);
@@ -905,6 +1018,7 @@ function needs(wi, destKey) {
     case 'GATE_OUT': return ['ASC-' + blockOf(u.pos)];
     case 'RAIL_DISCH': return ['RMG', 'ASC-' + blockOf(destKey)];
     case 'RAIL_LOAD': return ['ASC-' + blockOf(u.pos), 'RMG'];
+    case 'YARD_SHIFT': return blockOf(u.pos) === blockOf(destKey) ? ['ASC-' + blockOf(u.pos)] : ['ASC-' + blockOf(u.pos), 'AGV', 'ASC-' + blockOf(destKey)];
   }
   return [];
 }
@@ -915,6 +1029,10 @@ function tryDispatch(wi) {
     dest = planSlot(u);
     if (!dest) { wi.note = 'No yard space'; return false; }
   }
+  if (wi.kind === 'YARD_SHIFT') {
+    dest = shiftTarget(u);
+    if (!dest) { wi.note = 'No stack that keeps the rules is free'; return false; }
+  }
   const picked = [];
   for (const type of needs(wi, dest)) {
     const e = S.eq.find(x => x.type === type && x.status === 'IDLE' && !picked.includes(x) && (type !== 'QC' || x.vessel === wi.visit));
@@ -924,7 +1042,7 @@ function tryDispatch(wi) {
   picked.forEach(e => { e.status = 'BUSY'; e.wi = wi.id; });
   wi.eq = picked.map(e => e.id);
   wi.dest = dest;
-  wi.from = wi.kind === 'DISCHARGE' ? 'Vessel' : wi.kind === 'GATE_IN' ? 'Gate lane' : wi.kind === 'RAIL_DISCH' ? posLabel(u) : u.pos;
+  wi.from = wi.kind === 'YARD_SHIFT' ? u.pos : wi.kind === 'DISCHARGE' ? 'Vessel' : wi.kind === 'GATE_IN' ? 'Gate lane' : wi.kind === 'RAIL_DISCH' ? posLabel(u) : u.pos;
   wi.status = 'DISPATCHED';
   wi.note = '';
   wi.started = S.clock;
@@ -957,6 +1075,9 @@ function complete(wi) {
   } else if (wi.kind === 'RAIL_DISCH') {
     placeUnit(u, wi.dest); u.state = 'YARD'; u.inTime = S.clock; u.train = null; u.car = null;
     charge(u, 'LIFT_RAIL', t.lift, 'Rail discharge (off the railcar)');
+  } else if (wi.kind === 'YARD_SHIFT') {
+    // the terminal's own move (housekeeping): no charge to the line
+    retrieve(u, wi); placeUnit(u, wi.dest);
   } else if (wi.kind === 'RAIL_LOAD') {
     wi.from = posLabel(u);
     retrieve(u, wi); u.state = 'LOADED'; u.outTime = S.clock;
@@ -981,6 +1102,7 @@ function complete(wi) {
 function cycle() {
   S.clock += CYCLE_MIN;
   S.wis.filter(w => w.status === 'DISPATCHED').forEach(complete);
+  reeferTick();
   // a booked truck that never came by the end of its window has missed its appointment
   S.appts.filter(a => a.status === 'BOOKED' && S.clock > a.slot + 60 + APPT_GRACE).forEach(a => {
     a.status = 'MISSED'; log('GATE', `Appointment ${a.id} missed: ${a.truck} did not come by ${fmt(a.slot + 60 + APPT_GRACE)}`);
@@ -998,7 +1120,7 @@ function cycle() {
   const planned = S.wis.filter(w => w.status === 'PLANNED');
   if (!work) { planned.forEach(w => { w.note = 'Shabbat'; }); finishVisits(); return syncTransit(); }
   // discharge before load on the same vessel; discharge top tier first, load in plan order, the rest by creation
-  const order = { DISCHARGE: 0, RAIL_DISCH: 0, GATE_IN: 1, GATE_OUT: 1, LOAD: 2, RAIL_LOAD: 2 };
+  const order = { DISCHARGE: 0, RAIL_DISCH: 0, GATE_IN: 1, GATE_OUT: 1, YARD_SHIFT: 1, LOAD: 2, RAIL_LOAD: 2 };
   const rank = w => {
     const u = S.units[w.unit];
     if (w.kind === 'LOAD' && w.seq != null) return w.seq;
@@ -1213,6 +1335,9 @@ function header(title, concept, helpHe) {
 const tag = (cls, text) => `<span class="tag ${cls}">${esc(text)}</span>`;
 const wiTo = w => w.dest || ({ LOAD: 'Vessel', GATE_OUT: 'Truck', RAIL_LOAD: 'Train' + (S.units[w.unit]?.car ? ' car ' + S.units[w.unit].car : '') }[w.kind] || '');
 const unitLink = id =>`<a href="#" data-act="unit" data-id="${id}" class="mono">${id}</a>`;
+// reefer and DG facts of a box in one short cell
+const special = u => [u.reefer ? `Reefer ${u.reefer.set} C (now ${u.reefer.temp} C)` + (u.reefer.alarm ? ' ' + tag('st-HOLD', 'ALARM') : offPower(u) ? ' ' + tag('st-REFUSED', 'NO POWER') : '') : '',
+  u.dg ? `DG ${u.dg}` + (dgBad(u) ? ' ' + tag('st-HOLD', 'TOO CLOSE') : '') : ''].filter(Boolean).join(' &middot; ') || '-';
 
 const VIEWS = {
   overview() {
@@ -1426,8 +1551,8 @@ const VIEWS = {
       let cells = '';
       for (let row = 1; row <= b.rows; row++) for (let bay = 1; bay <= b.bays; bay++) {
         const key = stackKey(b.id, bay, row);
-        const tiers = S.stacks[key].map(id => { const u = S.units[id]; return `<div class="tier ${u.category} ${u.holds.length ? 'held' : ''}" title="${id}"></div>`; }).join('');
-        cells += `<div class="stack ${sel === key ? 'cur' : ''}" data-act="stack" data-id="${key}" title="${key}: ${S.stacks[key].length}/${MAX_TIER}"><span class="lbl">${String(bay).padStart(2, '0')}-${row}</span>${tiers}</div>`;
+        const tiers = S.stacks[key].map(id => { const u = S.units[id]; return `<div class="tier ${u.category} ${u.holds.length ? 'held' : ''}${u.reefer ? ' rf' : ''}${u.dg ? ' dg' : ''}${u.reefer?.alarm || offPower(u) || dgBad(u) ? ' alarm' : ''}" title="${id}"></div>`; }).join('');
+        cells += `<div class="stack ${sel === key ? 'cur' : ''}${isPowered(key) ? ' pwr' : ''}" data-act="stack" data-id="${key}" title="${key}: ${S.stacks[key].length}/${MAX_TIER}"><span class="lbl">${String(bay).padStart(2, '0')}-${row}</span>${tiers}</div>`;
       }
       return `<div class="block"><h3>Block ${b.id} <span class="note">(${b.use.join(' + ')})</span></h3>
         <div class="bgrid" style="grid-template-columns:repeat(${b.bays},44px)">${cells}</div></div>`;
@@ -1435,14 +1560,14 @@ const VIEWS = {
     let side = '<p class="note">Click a stack to see what is inside.</p>';
     if (sel) {
       const st = S.stacks[sel];
-      side = `<b>Stack ${sel}</b> (${st.length}/${MAX_TIER} tiers)<table class="grid"><tr><th>Tier</th><th>Unit</th><th>Cat.</th><th>Vessel</th></tr>` +
+      side = `<b>Stack ${sel}</b> (${st.length}/${MAX_TIER} tiers)${isPowered(sel) ? ' &middot; power sockets for reefers' : ''}<table class="grid"><tr><th>Tier</th><th>Unit</th><th>Cat.</th><th>Vessel</th><th>Reefer / DG</th></tr>` +
         st.map((id, i) => { const u = S.units[id]; return { i, u }; }).reverse().map(({ i, u }) =>
-          `<tr><td>T${i + 1}</td><td>${unitLink(u.id)}${u.holds.length ? ' ' + tag('st-HOLD', 'HOLD') : ''}</td><td class="c-${u.category}">${u.category}</td><td>${u.visit ? esc(visitById(u.visit)?.vessel || u.visit) : '-'}</td></tr>`).join('') +
+          `<tr><td>T${i + 1}</td><td>${unitLink(u.id)}${u.holds.length ? ' ' + tag('st-HOLD', 'HOLD') : ''}</td><td class="c-${u.category}">${u.category}</td><td>${u.visit ? esc(visitById(u.visit)?.vessel || u.visit) : '-'}</td><td>${special(u)}</td></tr>`).join('') +
         '</table><p class="note">Top of the stack is first. To take out a lower box, the crane must first move everything above it (a rehandle).</p>';
     }
     return header('Yard View', 'Yard blocks, stacks and tiers; Expert Decking (rule-based slot choice)',
-      'החצר מחולקת לבלוקים, וכל בלוק לערימות. כל ריבוע קטן הוא מכולה, והערימה בגובה עד 4. ירוק = ייצוא, כתום = יבוא, אפור = ריקה, פסים אדומים = עיכוב מכס. המערכת בוחרת מקום לבד לפי חוקי החצר (מסך Yard Rules): בהתחלה רק חוק אחד, מכולות ייצוא של אותה אונייה נערמות יחד, כדי שבהעמסה לא יצטרכו לחפור.') +
-      `<div class="legend"><span><i style="background:var(--exp)"></i>Export</span><span><i style="background:var(--imp)"></i>Import</span><span><i style="background:var(--mty)"></i>Empty</span><span><i class="tier held" style="background-color:var(--imp)"></i>On hold</span></div>
+      'החצר מחולקת לבלוקים, וכל בלוק לערימות. כל ריבוע קטן הוא מכולה, והערימה בגובה עד 4. ירוק = ייצוא, כתום = יבוא, אפור = ריקה, פסים אדומים = עיכוב מכס. קו כחול בתחתית ערימה = שקעי חשמל למכולות קירור, פס כחול על מכולה = מכולת קירור, יהלום שחור = מטען מסוכן, מסגרת אדומה = בעיה (פרטים במסך Reefers & Hazardous). המערכת בוחרת מקום לבד לפי חוקי החצר (מסך Yard Rules): בהתחלה רק חוק אחד, מכולות ייצוא של אותה אונייה נערמות יחד, כדי שבהעמסה לא יצטרכו לחפור.') +
+      `<div class="legend"><span><i style="background:var(--exp)"></i>Export</span><span><i style="background:var(--imp)"></i>Import</span><span><i style="background:var(--mty)"></i>Empty</span><span><i class="tier held" style="background-color:var(--imp)"></i>On hold</span><span><i class="lg-pwr"></i>Power sockets (reefer stack)</span><span><i class="lg-rf"></i>Reefer</span><span><i class="lg-dg"></i>Hazardous (DG)</span><span><i class="lg-warn"></i>Reefer or DG warning</span></div>
       <div class="yardwrap"><div class="blocks">${blocks}</div><div>${side}</div></div>`;
   },
   inspector() {
@@ -1462,7 +1587,9 @@ const VIEWS = {
     const unitBlock = `<fieldset><legend>Unit (the container itself, never changes)</legend><table class="grid">
       <tr><td>Number</td><td class="mono">${u.id}</td></tr>
       <tr><td>Owner</td><td>${u.id.slice(0, 4)} &middot; ${u.line} ${LINES[u.line]}</td></tr>
-      <tr><td>Type</td><td>${u.iso} ${ISO[u.iso]} (${sizeOf(u)}')</td></tr></table>
+      <tr><td>Type</td><td>${u.iso} ${ISO[u.iso]} (${sizeOf(u)}')</td></tr>
+      ${u.reefer ? `<tr><td>Reefer</td><td>Set point ${u.reefer.set} C (${REEFER_SETS[u.reefer.set] || ''}), now ${u.reefer.temp} C${offPower(u) ? `, no power for ${u.reefer.off} min` : ''}</td></tr>` : ''}
+      ${u.dg ? `<tr><td>Hazard</td><td>IMDG class ${u.dg} ${DG_CLASSES[u.dg]?.label || ''}</td></tr>` : ''}</table>
       ${u.pos ? `<p><button class="sm" data-act="unitYard" data-id="${u.id}">Show in yard</button></p>` : ''}</fieldset>`;
     const vrows = visits.map((x, i) => ({ x, i })).reverse().map(({ x, i }) => `<tr class="${i === sel ? 'sel' : ''}"><td class="mono">${x.id}</td><td>${x.category}</td><td>${esc(x.inBy)}</td><td>${esc(x.outBy || '-')}</td>
       <td>${fmt(x.inTime)}</td><td>${x.outTime != null ? fmt(x.outTime) : '-'}</td><td>${x.steps.length ? x.steps[x.steps.length - 1].state : '-'}</td>
@@ -1494,10 +1621,10 @@ const VIEWS = {
     return header('Unit Inventory', 'Units (containers) with category, freight kind, position, holds',
       'כל מכולה במערכת. המספר שלה בנוי כמו מספר אמיתי: 4 אותיות של הבעלים, 6 ספרות, וספרת ביקורת בסוף (מחושבת בנוסחה של תקן ISO 6346). כאן גם משחררים עיכוב (רק מי שרשאי, לפי בשם מי אתה פועל במסך Holds & Permissions), ורואים כמה ימים המכולה כבר בחצר וכמה אחסנה היא צוברת.') +
       `<p><label><input type="checkbox" data-act="showGone" ${UI.showGone ? 'checked' : ''}> Show departed units</label> &nbsp; <span class="note">Releasing as: ${HOLD_ROLES[S.holdRole]}</span></p>
-      <table class="grid"><tr><th>Unit</th><th>Type</th><th>Cat.</th><th>Line</th><th>Vessel visit</th><th>Train</th><th>Transit state</th><th>Position</th><th class="num">Tons</th><th class="num">Days</th><th class="num">Storage so far</th><th>Holds</th><th>Open WI</th></tr>` +
+      <table class="grid"><tr><th>Unit</th><th>Type</th><th>Cat.</th><th>Line</th><th>Vessel visit</th><th>Train</th><th>Transit state</th><th>Position</th><th class="num">Tons</th><th class="num">Days</th><th class="num">Storage so far</th><th>Reefer / DG</th><th>Holds</th><th>Open WI</th></tr>` +
       units.map(u => `<tr class="${UI.unit === u.id ? 'sel' : ''}"><td>${unitLink(u.id)}</td><td>${u.iso} <span class="note">${ISO[u.iso]}</span></td><td class="c-${u.category}">${u.category}</td>
         <td>${u.line}</td><td>${u.visit ? esc(visitById(u.visit)?.vessel || '') + ' ' + u.visit : '-'}</td><td>${u.train || '-'}</td><td>${u.transit || '-'}</td><td class="mono">${posLabel(u)}</td>
-        <td class="num">${u.weight}</td><td class="num">${u.inTime != null ? daysIn(u) : '-'}</td><td class="num">${u.inTime != null ? money(storageDue(u)) : '-'}</td>
+        <td class="num">${u.weight}</td><td class="num">${u.inTime != null ? daysIn(u) : '-'}</td><td class="num">${u.inTime != null ? money(storageDue(u)) : '-'}</td><td>${special(u)}</td>
         <td>${u.holds.map(h => tag('st-HOLD', h) + ` <button class="sm" data-act="release" data-id="${u.id}:${h}">Release</button>`).join(' ')}</td><td>${u.wi || ''}</td></tr>`).join('') + '</table>';
   },
   holds() {
@@ -1528,6 +1655,43 @@ const VIEWS = {
       <fieldset><legend>Containers on hold now</legend>${active ? `<table class="grid"><tr><th>Unit</th><th>Hold</th><th>Reason</th><th>Since</th><th>Put on by</th><th>Release</th></tr>${active}</table>` : '<p class="note">No container is on hold.</p>'}</fieldset>
       <fieldset><legend>Hold history (newest first)</legend>${hist ? `<table class="grid"><tr><th>When</th><th>Unit</th><th>Hold</th><th>Action</th><th>By</th><th>Reason</th></tr>${hist}</table>` : '<p class="note">Nothing yet.</p>'}</fieldset>`;
   },
+  reefer() {
+    const R = S.specRules, yard = Object.values(S.units).filter(u => u.state === 'YARD' && u.pos);
+    const head = header('Reefers & Hazardous', 'Reefer monitoring (power, set point, temperature) and IMDG segregation of dangerous goods in the yard',
+      'שני סוגי מכולות צריכים טיפול מיוחד בחצר. ' +
+      'מכולת קירור (Reefer) היא מקרר ענק: בתוכה בשר קפוא, חלב או פירות. היא צריכה חשמל כל הזמן. בחצר יש ערימות מיוחדות עם שקעי חשמל (בנמל הזה: ה-bay האחרון, 06, בכל בלוק, 8 שקעים בבלוק). מכולת קירור בלי שקע מתחממת חצי מעלה בכל רבע שעה, וכשהיא חמה ביותר מ-3 מעלות מעל הטמפרטורה שלה יש אזעקה: הסחורה בסכנה. ' +
+      'מטען מסוכן (Dangerous Goods, DG) הוא חומר שיכול להישרף, להתפוצץ או להרעיל: דלק, גז, חומצה. לכל חומר יש מחלקה לפי הקוד הבינלאומי IMDG. חלק מהמחלקות אסור להעמיד קרוב אחת לשנייה: למשל נוזל דליק ליד מחמצן (חומר שמזין שריפה) יכול להפוך שריפה קטנה לגדולה. הטבלה למטה אומרת כמה רחוק. ' +
+      'כשהחוקים דולקים, המחשב שולח כל מכולת קירור לערימה עם שקע, ושומר מרחק בין חומרים מסוכנים. אם תכבה חוק, מכולות חדשות ייכנסו בלי לשמור עליו, ותראה אזהרות. הכפתור Move שולח מכולה בעייתית לערימה תקינה (הזזה בחצר, Yard shift).');
+    const onoff = id => `<button class="sm${R[id] ? ' on rule-on' : ''}" data-act="specRule" data-id="${id}">${R[id] ? 'ON' : 'OFF'}</button>`;
+    const sockets = BLOCKS.map(b => { const keys = Object.keys(S.stacks).filter(k => k[0] === b.id && isPowered(k)), used = keys.reduce((n, k) => n + S.stacks[k].filter(id => S.units[id].reefer).length, 0),
+      other = keys.reduce((n, k) => n + S.stacks[k].filter(id => !S.units[id].reefer).length, 0);
+      return `<tr><td>${b.id}</td><td>${b.use.join(' + ')}</td><td class="num">${keys.length * MAX_TIER}</td><td class="num">${used}</td><td class="num">${other}</td><td class="num">${keys.length * MAX_TIER - used - other}</td></tr>`; }).join('');
+    const fix = u => u.wi ? (S.wis.find(w => w.id === u.wi)?.kind === 'YARD_SHIFT' ? 'Move planned (' + u.wi + ')' : 'Busy: ' + u.wi) : `<button class="sm" data-act="shift" data-id="${u.id}">Move</button>`;
+    const reefers = yard.filter(u => u.reefer).map(u => { const r = u.reefer;
+      return `<tr><td>${unitLink(u.id)}</td><td class="mono">${u.pos}</td><td class="num">${r.set} C</td><td class="num">${r.temp} C</td><td>${isPowered(u.pos) ? tag('st-COMPLETE', 'POWER ON') : tag('st-REFUSED', 'NO POWER')}</td>
+        <td class="num">${r.off ? r.off + ' min' : '-'}</td><td>${r.alarm ? tag('st-HOLD', 'ALARM') : tag('st-COMPLETE', 'OK')}</td><td>${offPower(u) ? fix(u) : '-'}</td></tr>`; }).join('');
+    const away = Object.values(S.units).filter(u => u.reefer && u.state !== 'YARD' && !['LOADED', 'DEPARTED'].includes(u.state)).length;
+    const clashes = dgClashes();
+    const dgs = yard.filter(u => u.dg).map(u => `<tr><td>${unitLink(u.id)}</td><td>Class ${u.dg} ${DG_CLASSES[u.dg]?.label || ''}</td><td class="mono">${u.pos}</td><td class="c-${u.category}">${u.category}</td>
+      <td>${dgBad(u) ? tag('st-HOLD', 'TOO CLOSE') : tag('st-COMPLETE', 'OK')}</td></tr>`).join('');
+    const crow = c => `<tr><td>${unitLink(c.a.id)} <span class="note">class ${c.a.dg} in ${c.a.pos}</span></td><td>${unitLink(c.b.id)} <span class="note">class ${c.b.dg} in ${c.b.pos}</span></td>
+      <td>${SEG_LEVELS[c.level].label} (${SEG_LEVELS[c.level].min} stacks)</td><td class="num">${c.d === 0 ? 'same stack' : c.d + ' stack' + (c.d > 1 ? 's' : '')}</td><td>${fix(c.b)}</td></tr>`;
+    const cls = DG_LIST;
+    const segt = `<table class="grid segt"><tr><th>Class</th>${cls.map(c => `<th>Class ${c}</th>`).join('')}</tr>` + cls.map(a => `<tr><th>Class ${a}</th>${cls.map(b => { const l = segNeed(a, b);
+      return `<td>${l === 2 ? tag('st-HOLD', 'SEPARATED') : l === 1 ? tag('st-REFUSED', 'AWAY') : '-'}</td>`; }).join('')}</tr>`).join('') + '</table>';
+    return head + `<fieldset><legend>Rules for new boxes</legend><table class="grid"><tr><th>On</th><th>Rule</th><th>What the yard planner does</th></tr>
+        <tr><td>${onoff('REEFER')}</td><td>Reefers on power</td><td>A reefer goes to a stack with power sockets. Other boxes stay off those stacks while there is room elsewhere.</td></tr>
+        <tr><td>${onoff('DG')}</td><td>DG segregation</td><td>A hazardous box keeps the distance in the table below from every box it must be kept from.</td></tr></table>
+        <p class="note">These two rules come before every rule on the Yard Rules screen. Switched off, new boxes ignore them; boxes already in the yard do not move.</p></fieldset>
+      <fieldset><legend>Power sockets</legend><table class="grid"><tr><th>Block</th><th>Use</th><th class="num">Sockets</th><th class="num">Reefers plugged</th><th class="num">Other boxes on socket stacks</th><th class="num">Free sockets</th></tr>${sockets}</table>
+        <p class="note">Socket stacks are bay 06 of every block (2 stacks, 4 tiers each). On the Yard View they have a blue line at the bottom.</p></fieldset>
+      <fieldset><legend>Reefer monitor</legend>${reefers ? `<table class="grid"><tr><th>Unit</th><th>Stack</th><th class="num">Set point</th><th class="num">Now</th><th>Power</th><th class="num">Off power for</th><th>Status</th><th>Fix</th></tr>${reefers}</table>` : '<p class="note">No reefer in the yard.</p>'}
+        <p class="note">${away} reefer${away === 1 ? '' : 's'} on a vessel, a train or a truck right now: they run on that power, so they do not warm up.</p></fieldset>
+      <fieldset><legend>Dangerous goods in the yard</legend>${dgs ? `<table class="grid"><tr><th>Unit</th><th>IMDG class</th><th>Stack</th><th>Cat.</th><th>Status</th></tr>${dgs}</table>` : '<p class="note">No hazardous box in the yard.</p>'}</fieldset>
+      <fieldset><legend>Segregation warnings</legend>${clashes.length ? `<table class="grid"><tr><th>Box</th><th>Too close to</th><th>Must be</th><th class="num">Distance now</th><th>Fix</th></tr>${clashes.map(crow).join('')}</table>` : '<p class="note">No warning: every hazardous box keeps its distance.</p>'}</fieldset>
+      <fieldset><legend>Segregation table (simplified from IMDG)</legend><div style="overflow-x:auto">${segt}</div>
+        <p class="note">AWAY = "away from": not in the same stack or a touching one. SEPARATED = "separated from": at least two stacks between them, or another block. - = may stand together. For teaching only, not for real operations.</p></fieldset>`;
+  },
   gate() {
     const open = S.visits.filter(v => !['DEPARTED'].includes(v.phase));
     const pickups = Object.values(S.units).filter(u => u.state === 'YARD' && !u.wi && u.category !== 'EXPORT' && !u.train);
@@ -1543,6 +1707,8 @@ const VIEWS = {
         <label data-tip="התור שהמשאית הזמינה מראש: מספר התור, מספר המשאית ובאיזו שעה. No appointment = משאית שבאה בלי תור, והשער ידחה אותה (אלא אם ביטלו את החובה במסך Truck Appointments).">Appointment <select name="appt">${recv.map(a => `<option value="${a.id}">${a.id} ${a.truck} ${APPT_KINDS[a.kind]}, ${slotLabel(a.slot).slice(4)}</option>`).join('')}<option value="">No appointment</option></select></label>
         <label data-tip="חברת הספנות שהמכולה שייכת לה.">Line <select name="line">${Object.keys(LINES).map(l => `<option>${l}</option>`).join('')}</select></label>
         <label data-tip="סוג המכולה לפי תקן בינלאומי: 20 רגל רגילה, 40 רגל גבוהה, או 20 רגל מקוררת.">ISO <select name="iso">${Object.keys(ISO).map(i => `<option value="${i}">${i} ${ISO[i]}</option>`)}</select></label>
+        <label data-tip="מטען מסוכן (Dangerous Goods): המחלקה לפי הקוד הבינלאומי IMDG, שמודבקת על המכולה כמדבקה בצורת יהלום. מחלקות מסוימות אסור להעמיד קרוב אחת לשנייה בחצר (דליק ליד מחמצן, למשל). רק למכולת ייצוא מלאה.">Hazard (IMDG) <select name="dg"><option value="">None</option>${DG_LIST.map(c => `<option value="${c}">Class ${c} ${DG_CLASSES[c].label}</option>`).join('')}</select></label>
+        <label data-tip="רק למכולת קירור (ISO עם R): לאיזו טמפרטורה המקרר שלה מכוון. מינוס 18 = קפוא (בשר, דגים), 4 = מקורר (חלב, פירות), 13 = בננות. בחצר היא צריכה שקע חשמל כדי לשמור על הטמפרטורה.">Reefer set point <select name="set">${Object.entries(REEFER_SETS).map(([t, d]) => `<option value="${t}">${t} C ${d}</option>`).join('')}</select></label>
         <button data-tip="המשאית נכנסת עם המכולה, ונוצרת משימה לעגורן החצר להוריד אותה.">Gate in</button></form></fieldset>
       <fieldset><legend>Deliver (gate out)</legend><form class="row" data-form="gateout">
         <label data-tip="איזו מכולה המשאית באה לקחת. מכולה עם [HOLD] תידחה בשער. ליד כל מכולה כתוב אם יש למשאית שלה תור (appt ומספר) או שאין (no appointment), ואז השער ידחה אותה.">Unit to pick up <select name="unit">${pickups.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.holds.length ? '[HOLD]' : ''} @ ${posLabel(u)} ${pickAppt(u) ? '- appt ' + pickAppt(u).id + ' ' + fmt(pickAppt(u).slot).slice(-5) : '- no appointment'}</option>`).join('')}</select></label>
@@ -1721,12 +1887,13 @@ const VIEWS = {
       ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין אין מצלמות/OCR.'],
       ['Truck Appointments', 'תור לשעה לכל משאית, מספר מקומות לכל שעה, חלון של חצי שעה לפני ואחרי. השער דוחה משאית בלי תור, מוקדמת, מאוחרת, או עם תור למטרה אחרת. תור שלא נוצל = MISSED.', 'ב-N4 יש תורים למשאיות (Gate Appointments) עם מכסות לפי שעה, שהשער בודק כשהמשאית מגיעה. בנמלים רבים מזמינים דרך אתר או אפליקציה של הנמל.', 'אין קנס על תור שהוחמץ, אין מכסה לפי סוג משאית או חברת הובלה, והמשאית מגיעה רק כשאתה לוחץ.'],
       ['Holds & Permissions', '4 סוגי עיכוב (מכס, וטרינריה, חוב, נזק). כל סוג שייך לגוף אחד, ורק הוא רשאי לשים ולשחרר. לכל עיכוב סיבה, שעה ומי שם, והיסטוריה מלאה כולל ניסיונות שנדחו. כל עיכוב חוסם יציאה בשער וברכבת.', 'N4 מנהל עיכובים והרשאות (holds and permissions) על מכולות, וכל סוג עיכוב מוגדר עם מי רשאי לשחרר אותו.', 'סוגים קבועים, בלי משתמשים אמיתיים (בוחרים תפקיד ביד, משתמשים אמיתיים בגרסה 12). עיכוב לא חוסם העמסה לאונייה. עיכוב חוב לא משתחרר לבד כשמשלמים.'],
+      ['Reefers & Hazardous', 'מכולות קירור עם טמפרטורה שנקבעה, שקעי חשמל ב-bay 06 של כל בלוק, התחממות ואזעקה בלי חשמל. מטען מסוכן לפי 7 מחלקות IMDG, טבלת הפרדה ומרחק בערימות בחצר, אזהרות, והזזה בחצר (Yard shift) שמתקנת.', 'ב-N4 יש ניטור מכולות קירור (Reefer monitoring, כולל חיבור למערכות שקוראות טמפרטורה מרחוק) ופרטי מטען מסוכן לכל מכולה (Hazards), וחוקי הפרדה בחצר ובאונייה.', 'טבלת הפרדה מקוצרת, מרחק נמדד בערימות ולא במטרים, אין הפרדה באונייה, אין חיוב על חשמל, ואין מחלקות 1 ו-7.'],
       ['Work Queues', 'כל תנועה היא הוראת עבודה בתור לפי סוג.', 'N4 יוצר הוראות עבודה ושולח משימות למערכת בקרת הציוד (ECS).', 'כל תנועה לוקחת בדיוק 15 דקות.'],
       ['נמל הדרום אשדוד', 'הנמל בנוי לפי נמל הדרום (HCT) מוקטן פי 4: רציפים 27 ו-28, 2 עגורני רציף, 8 עגורני חצר אוטומטיים ב-4 בלוקים, מסילת רכבת. אין עבודה משישי 15:00 עד מוצאי שבת 20:00, והשער פתוח לפי השעות הרשמיות.', 'לפי מקור ציבורי יחיד, נמל הדרום משתמש כנראה במערכת TOS של Konecranes, ולא ב-N4. הסימולטור נשאר "בסגנון N4" כמודל לימוד.', 'מספר המקומות בחצר לא אמיתי (לא פורסם). אין חגים ואין שעון קיץ. כלי ההסעה בין הרציף לחצר לא ידוע, ולכן AGV.'],
       ['Equipment (ECS)', 'QC, AGV, ושני ASC בכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
       ['Billing', 'תעריפים, חיובי הרמה ושער, אחסנה אחרי ימי חינם, חשבוניות, תשלום, זיכוי.', 'N4 Billing: חשבוניות, תשלומים וזיכויים.', 'אין מע"מ, מטבעות או חוזים לפי לקוח.'],
       ['טכנולוגיה', 'קובץ HTML אחד שרץ בדפדפן, בלי שרת.', 'N4 בנוי על J2EE, עם חוקים עסקיים שמוגדרים בנתונים (metadata) ולא בקוד.', 'אין משתמשים, הרשאות או מסד נתונים.'],
-      ['עוד לא קיים', 'סוגי עיכובים והרשאות, משתמשים ותפקידים.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
+      ['עוד לא קיים', 'משתמשים ותפקידים, מסלולי נסיעה, תקלות ציוד, מטען המשך, הודעות EDI.', 'כולם קיימים ב-N4 האמיתי.', 'השלבים הבאים של הפרויקט.'],
     ];
     return header('How it maps to N4', 'Concept map', 'הטבלה מסבירה מה כל מסך בסימולטור מדגים, מה הרעיון המקביל במערכת N4 האמיתית (לפי מקורות ציבוריים בלבד), ומה פישטנו. המראה הוא "בסגנון N4", לא העתק: המסכים האמיתיים לא פומביים.') +
       `<table class="grid map rtl"><tr><th>מסך</th><th>מה יש בסימולטור</th><th>ב-N4 האמיתי</th><th>מה פישטנו</th></tr>` +
@@ -1926,6 +2093,17 @@ const ACTIONS = {
     UI.msg = null;
   },
   release: id => { const [uid, type] = id.split(':'), u = S.units[uid], t = type || u.holds[0]; if (!t) return; const r = holdAct(u, t, 'RELEASED'); flash(r.ok ? 'ok' : 'err', r.msg); },
+  specRule: id => { if (!(id in S.specRules)) return; S.specRules[id] = !S.specRules[id];
+    log('YARD', `${id === 'REEFER' ? 'Reefers on power' : 'DG segregation'} rule ${S.specRules[id] ? 'on' : 'off'}`);
+    flash('ok', `Saved. ${id === 'REEFER' ? 'Reefers on power' : 'DG segregation'} is ${S.specRules[id] ? 'on' : 'off'} for boxes that come into the yard from now on.`); },
+  shift: id => { const u = S.units[id];
+    if (!u || u.state !== 'YARD' || u.wi) { flash('err', 'This box cannot move now: it is not in the yard, or it already has a job.'); return; }
+    if (!offPower(u) && !dgBad(u)) { flash('err', `${id} already keeps the rules where it stands. Nothing to fix.`); return; }
+    const to = shiftTarget(u);
+    if (!to) { flash('err', `No free stack keeps the rules for ${id}. Make room first.`); return; }
+    const wi = newWI('YARD_SHIFT', u);
+    log('YARD', `${wi.id} yard shift for ${id} from ${u.pos}` + (offPower(u) ? ' (reefer to power)' : ' (DG segregation)'));
+    flash('ok', `${wi.id} created: ${id} will move to a stack that keeps the rules (now that is ${to}). Run a cycle.`); },
   holdRole: id => { if (!HOLD_ROLES[id]) return; S.holdRole = id; flash('ok', `You now act as ${HOLD_ROLES[id]}.`); },
   showGone: () => { UI.showGone = !UI.showGone; },
   showDone: () => { UI.showDone = !UI.showDone; },
@@ -2037,13 +2215,13 @@ const FORMS = {
     const back = f.ret && S.units[f.ret];
     if (back && (f.kind !== 'EMPTY' || back.state !== 'DEPARTED')) { flash('err', 'A returning container can only come back as an Empty return, and only after it has left the port.'); return; }
     const u = back ? returnUnit(back) : addUnit({ line: f.line, category: f.kind, iso: f.iso, visit: f.kind === 'EXPORT' ? f.visit : null, state: 'AT_GATE',
-      pod: f.kind === 'EXPORT' ? Math.min(3, Math.max(1, Number(f.pod) | 0)) : null });
+      pod: f.kind === 'EXPORT' ? Math.min(3, Math.max(1, Number(f.pod) | 0)) : null, dg: f.kind === 'EXPORT' && DG_CLASSES[f.dg] ? f.dg : null, set: f.set });
     if (f.kind === 'EMPTY') u.weight = 2.2;
     const tx = { id: 'TX' + String(++S.seq.tx).padStart(4, '0'), time: S.clock, truck: 'TRK-' + (100 + ++S.seq.truck), kind: 'RECEIVE ' + f.kind, unit: u.id, status: 'PLANNED' };
     useAppt(appt, tx);
     tx.wi = newWI('GATE_IN', u).id;
     S.gate.push(tx);
-    log('GATE', `${tx.truck} in with ${u.id} (${f.kind}), ${tx.wi} created`);
+    log('GATE', `${tx.truck} in with ${u.id} (${f.kind}${u.dg ? ', DG class ' + u.dg : ''}${u.reefer ? ', reefer ' + u.reefer.set + ' C' : ''}), ${tx.wi} created`);
     flash('ok', `Truck ${tx.truck} accepted with ${u.id}. Run a cycle to stack it.`);
   },
   gateout: f => {
@@ -2128,6 +2306,34 @@ function infoTip(el) {
 }
 const INFO = {
   th: {
+    'Reefer / DG': 'מכולת קירור: לאיזו טמפרטורה היא מכוונת ומה הטמפרטורה עכשיו (C = מעלות צלזיוס). DG ומספר: מטען מסוכן ומחלקת החומר לפי IMDG. NO POWER = מכולת קירור בלי חשמל, ALARM = חמה מדי, TOO CLOSE = קרובה מדי לחומר אסור.',
+    'Rule': 'שם החוק.',
+    'What the yard planner does': 'מה המחשב עושה כשהחוק דולק, כשהוא בוחר ערימה למכולה שנכנסת לחצר.',
+    'Block': 'הבלוק בחצר (A, B, C או D).',
+    'Use': 'אילו מכולות נכנסות לבלוק הזה: EXPORT ייצוא, IMPORT יבוא, EMPTY ריקות.',
+    'Sockets': 'כמה שקעי חשמל יש בבלוק: 2 ערימות עם שקעים, 4 קומות בכל אחת, שקע לכל קומה.',
+    'Reefers plugged': 'כמה מכולות קירור מחוברות עכשיו לשקע בבלוק הזה.',
+    'Other boxes on socket stacks': 'כמה מכולות רגילות (לא קירור) עומדות על ערימות השקעים ותופסות שקע שמכולת קירור הייתה יכולה להשתמש בו.',
+    'Free sockets': 'כמה שקעים פנויים נשארו בבלוק למכולות קירור שעוד יגיעו.',
+    'Stack': 'הערימה בחצר שבה המכולה עומדת: בלוק-bay-שורה. bay 06 = ערימה עם שקעי חשמל.',
+    'Set point': 'הטמפרטורה שהמקרר של המכולה מכוון אליה (מינוס 18 קפוא, 4 מקורר, 13 בננות).',
+    'Now': 'הטמפרטורה בתוך המכולה עכשיו. עם חשמל היא חוזרת לאט לטמפרטורה שנקבעה, בלי חשמל היא עולה חצי מעלה בכל רבע שעה.',
+    'Power': 'האם המכולה מחוברת לשקע חשמל: POWER ON מחוברת, NO POWER לא.',
+    'Off power for': 'כמה דקות המכולה כבר בלי חשמל בחצר.',
+    'Fix': 'מה אפשר לעשות: Move יוצר משימה לעגורן החצר להעביר את המכולה לערימה תקינה.',
+    'IMDG class': 'מחלקת החומר המסוכן לפי הקוד הבינלאומי IMDG (הקוד שכל הנמלים והאוניות בעולם משתמשים בו). המספר מודבק על המכולה במדבקה בצורת יהלום.',
+    'Box': 'מכולה עם מטען מסוכן, איזו מחלקה ואיפה היא עומדת.',
+    'Too close to': 'המכולה השנייה, עם חומר שאסור לעמוד ליד הראשונה, ואיפה היא.',
+    'Must be': 'כמה רחוק הן צריכות להיות לפי הטבלה: Away from (לפחות 2 ערימות הפרש, כלומר ערימה אחת ביניהן) או Separated from (לפחות 3, או בלוק אחר).',
+    'Distance now': 'כמה ערימות ביניהן עכשיו באותו בלוק (הפרש ה-bay או השורה, הגדול מביניהם). same stack = באותה ערימה.',
+    'Class': 'המחלקות של החומרים המסוכנים. בכל משבצת: כמה רחוק צריך להרחיק את המחלקה בשורה מהמחלקה בעמודה.',
+    'Class 2.1': 'מחלקה 2.1 לפי IMDG: גז דליק, כמו גז בישול.',
+    'Class 3': 'מחלקה 3 לפי IMDG: נוזל דליק, כמו דלק או צבע.',
+    'Class 4.1': 'מחלקה 4.1 לפי IMDG: מוצק דליק, כמו גפרורים.',
+    'Class 5.1': 'מחלקה 5.1 לפי IMDG: מחמצן: חומר שמזין שריפה, כמו דשנים מסוימים.',
+    'Class 6.1': 'מחלקה 6.1 לפי IMDG: רעיל, כמו חומרי הדברה.',
+    'Class 8': 'מחלקה 8 לפי IMDG: מאכל, כמו חומצות.',
+    'Class 9': 'מחלקה 9 לפי IMDG: שונות, כמו סוללות ליתיום. אפשר להעמיד ליד כל השאר.',
     'Hold': 'סוג העיכוב: CUSTOMS מכס, VET וטרינריה, DEBT חוב, DAMAGE נזק.',
     'Put on and released by': 'הגוף היחיד שרשאי לשים את העיכוב הזה ולשחרר אותו. כל אחד אחר יקבל דחייה.',
     'Blocks': 'מה העיכוב עוצר: משאית לא יכולה לקחת את המכולה בשער, והרכבת לא תעמיס אותה. העמסה לאונייה לא נעצרת בגרסה הזאת.',
@@ -2241,6 +2447,13 @@ const INFO = {
     'מה פישטנו': 'מה חסר כאן לעומת נמל אמיתי.',
   },
   tag: {
+    'OK': 'הכל תקין.',
+    'POWER ON': 'המכולה מחוברת לשקע חשמל, והמקרר שלה עובד.',
+    'NO POWER': 'מכולת קירור בלי שקע חשמל: היא מתחממת. צריך להעביר אותה לערימה עם שקע (כפתור Move).',
+    'ALARM': 'אזעקה: מכולת הקירור חמה ביותר מ-3 מעלות מעל הטמפרטורה שלה. הסחורה בפנים בסכנה.',
+    'TOO CLOSE': 'המכולה עם המטען המסוכן עומדת קרוב מדי למכולה עם חומר שאסור לעמוד לידו. צריך להזיז אחת מהן.',
+    'AWAY': 'Away from (הרחק מ-): לא באותה ערימה ולא בערימה צמודה. צריכה להיות לפחות ערימה אחת ביניהן.',
+    'SEPARATED': 'Separated from (מופרד מ-): לפחות שתי ערימות ביניהן באותו בלוק, או בבלוק אחר.',
     'IDLE': 'פנויה: המכונה מחכה למשימה.',
     'BUSY': 'עסוקה: המכונה מבצעת עכשיו הוראת עבודה.',
     'SHABBAT': 'שבת: המכונה לא מקבלת עבודה חדשה עד מוצאי שבת 20:00.',
@@ -2270,6 +2483,16 @@ const INFO = {
     'PAID': 'החשבונית שולמה.',
   },
   part: {
+    'Power sockets (reefer stack)': 'ערימה עם שקעי חשמל (קו כחול למטה): כאן עומדות מכולות הקירור. בנמל הזה זה ה-bay האחרון (06) בכל בלוק.',
+    'Reefer': 'מכולת קירור (פס כחול בצד שמאל): מקרר ענק שצריך חשמל כל הזמן.',
+    'Hazardous (DG)': 'מכולה עם מטען מסוכן (יהלום שחור): חומר דליק, רעיל או מאכל. יש חוקים כמה רחוק להעמיד אותה מחומרים אחרים.',
+    'Reefer or DG warning': 'מסגרת אדומה: מכולת קירור בלי חשמל או חמה מדי, או מטען מסוכן שעומד קרוב מדי לחומר אסור. הפרטים במסך Reefers & Hazardous.',
+    'Rules for new boxes': 'שני חוקים שהמחשב שומר עליהם כשהוא בוחר ערימה למכולה חדשה: מכולת קירור לשקע, ומרחק בין חומרים מסוכנים. אפשר לכבות כל אחד כדי לראות מה קורה בלעדיו.',
+    'Power sockets': 'כמה שקעי חשמל למכולות קירור יש בכל בלוק, כמה תפוסים וכמה פנויים.',
+    'Reefer monitor': 'כל מכולות הקירור בחצר: לאיזו טמפרטורה הן מכוונות, מה הטמפרטורה עכשיו, אם יש להן חשמל, ואם יש אזעקה. בנמל אמיתי בודקים את זה כל כמה שעות, או מרחוק דרך המחשב.',
+    'Dangerous goods in the yard': 'כל המכולות עם מטען מסוכן שעומדות עכשיו בחצר, המחלקה שלהן, ואם הן שומרות מרחק מחומרים אחרים.',
+    'Segregation warnings': 'זוגות של מכולות עם חומרים מסוכנים שעומדות קרוב יותר ממה שהטבלה מרשה. כל שורה היא סכנה שצריך לתקן.',
+    'Segregation table (simplified from IMDG)': 'טבלת ההפרדה: איזו מחלקה צריכה להיות רחוקה מאיזו, וכמה. מבוססת על הטבלה הציבורית של קוד IMDG, בפישוט לצורך לימוד.',
     'Who you are acting as': 'בשם איזה גוף אתה פועל עכשיו. כל גוף רשאי לשים ולשחרר רק את סוג העיכוב שלו.',
     'Hold types and who may release them': 'ארבעת סוגי העיכוב, מי רשאי לשים ולשחרר כל אחד, מה הם עוצרים וכמה מכולות בכל סוג עכשיו. (you) = הסוג שאתה רשאי לשים ולשחרר.',
     'Put a hold on a container': 'כאן שמים עיכוב על מכולה: בוחרים מכולה, סוג וסיבה.',
