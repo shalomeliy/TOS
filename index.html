@@ -107,7 +107,7 @@ table.grid{border-collapse:collapse;width:100%;background:#fff;margin-bottom:10p
 .aslot.on{outline:2px solid #1d4f91}.aslot.afull{background:#f7c9c9;color:#600}
 .abar{display:block;height:6px;background:#fff;border:1px solid #999}.abar i{display:block;height:100%;background:#4a7bc0}.afull .abar i{background:#b33}
 .st-PLANNED{background:#fff3c4}.st-DISPATCHED{background:#c8dcff}.st-COMPLETE{background:#d4efd4}
-.st-REJECTED,.st-HOLD{background:#f7c9c9}.st-DRAFT{background:#eee}.st-FINAL{background:#c8dcff}.st-PAID{background:#d4efd4}
+.st-REJECTED,.st-HOLD,.st-APPLIED{background:#f7c9c9}.st-RELEASED{background:#d4efd4}.st-REFUSED{background:#ffd9a8}.st-DRAFT{background:#eee}.st-FINAL{background:#c8dcff}.st-PAID{background:#d4efd4}
 .ph-INBOUND{background:#eee}.ph-ARRIVED{background:#fff3c4}.ph-WORKING{background:#c8dcff}.ph-COMPLETE{background:#d4efd4}.ph-DEPARTED{background:#ddd;color:#666}
 .c-EXPORT{color:var(--exp);font-weight:bold}.c-IMPORT{color:var(--imp);font-weight:bold}.c-EMPTY{color:var(--mty);font-weight:bold}
 .kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:10px}
@@ -207,9 +207,19 @@ const BLOCKS = [
 // Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
 const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
 // shown top right; bump on every push: <roadmap version>.<fix number inside it>
-const APP_VERSION = 'v9.1', APP_DATE = '31-10-2026';
-const STATE_VER = 9;                             // bump when the saved shape changes, and add a MIGRATE step
+const APP_VERSION = 'v10.0', APP_DATE = '31-10-2026';
+const STATE_VER = 10;                            // bump when the saved shape changes, and add a MIGRATE step
 // truck appointments: one-hour slots; a truck is on time from APPT_GRACE minutes before its hour to APPT_GRACE after it ends
+// holds (version 10): every hold type belongs to one authority, and only that role may put it on or take it off.
+// Any hold stops a box leaving the terminal inland (gate out, train). u.holds keeps the type codes; S.holdLog keeps who, when and why
+const HOLD_ROLES = { CUSTOMS: 'Customs officer', VET: 'Veterinary inspector', FINANCE: 'Finance clerk', TERMINAL: 'Terminal operator' };
+const HOLD_ROLES_HE = { CUSTOMS: 'פקיד מכס', VET: 'רופא וטרינר של השירותים הווטרינריים', FINANCE: 'פקיד כספים של הנמל', TERMINAL: 'מפעיל הנמל' };
+const HOLD_TYPES = {
+  CUSTOMS: { label: 'Customs', he: 'מכס', role: 'CUSTOMS', reasons: ['Customs inspection', 'Documents missing', 'X-ray scan'] },
+  VET: { label: 'Veterinary', he: 'וטרינריה', role: 'VET', reasons: ['Food or animal products: lab sample', 'Plant products: pest check', 'Import permit missing'] },
+  DEBT: { label: 'Debt', he: 'חוב', role: 'FINANCE', reasons: ['Unpaid storage', 'Unpaid invoice', 'No guarantee on file'] },
+  DAMAGE: { label: 'Damage', he: 'נזק', role: 'TERMINAL', reasons: ['Damaged box: survey', 'Seal broken', 'Leak'] },
+};
 const APPT_GRACE = 30, APPT_KINDS = { 'RECEIVE EXPORT': 'Bring an export', 'RECEIVE EMPTY': 'Return an empty', DELIVER: 'Pick up an import' };
 // each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
 const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
@@ -223,7 +233,7 @@ const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer" }
 const PAGES = [
   ['Terminal', [['overview', 'Overview']]],
   ['Vessel', [['vessels', 'Vessel Visits'], ['berth', 'Berth Schedule'], ['stowage', 'Stowage Plan']]],
-  ['Yard', [['yard', 'Yard View'], ['yardrules', 'Yard Rules'], ['inventory', 'Unit Inventory'], ['inspector', 'Unit Inspector']]],
+  ['Yard', [['yard', 'Yard View'], ['yardrules', 'Yard Rules'], ['inventory', 'Unit Inventory'], ['holds', 'Holds & Permissions'], ['inspector', 'Unit Inspector']]],
   ['Gate', [['gate', 'Gate Transactions'], ['appts', 'Truck Appointments']]],
   ['Rail', [['rail', 'Train Visits']]],
   ['Control', [['work', 'Work Queues'], ['equipment', 'Equipment (ECS)']]],
@@ -238,7 +248,8 @@ const PAGE_TIPS = {
   stowage: 'תוכנית ההעמסה: איזו מכולה עולה לאיזה מקום באונייה, ולמה. כאן גם מתרגלים תכנון בעצמך.',
   yard: 'מפת החצר: איפה כל מכולה עומדת. לחיצה על ערימה מראה מה בתוכה.',
   yardrules: 'חוקי החצר: לפי מה המחשב בוחר לכל מכולה ערימה בחצר, ובאיזה סדר חשיבות. כאן גם רואים במספרים כמה הזזות מיותרות כל בחירה גורמת.',
-  inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן משחררים עיכוב מכס.',
+  inventory: 'רשימת כל המכולות עם הפרטים שלהן. כאן אפשר גם לשחרר עיכוב.',
+  holds: 'עיכובים והרשאות: מי שם עיכוב על מכולה ולמה, מי רשאי לשחרר כל סוג, וכל ההיסטוריה.',
   inspector: 'מכולה אחת לעומק: מי היא, כל הביקורים שלה בנמל, ושלבי החיים של כל ביקור.',
   gate: 'השער: משאיות שמביאות מכולות, או באות לקחת מכולות.',
   appts: 'תורים למשאיות: כל משאית מזמינה מראש שעה להגיע לשער, ובכל שעה יש מקום רק לכמה משאיות.',
@@ -257,6 +268,7 @@ const SCREEN_TIPS = {
   stowage: 'מה רואים: חתך של האונייה, bay אחד בכל פעם: שורות לרוחב, קומות לגובה, קו עבה בין הבטן (למטה) לסיפון (למעלה). מקום עם קו מקווקו = מתוכנן, מלא = כבר על האונייה, אדום עם ! = אזהרה. מה אפשר לעשות: לבחור אונייה ו-bay, להחליף צבע לפי נמל יעד או לפי משקל, וללחוץ על מקום כדי לקרוא למה המכולה שם. תרגול: באונייה שעוד לא התחילו לעבוד עליה לוחצים Plan it myself, בוחרים מכולה מהרשימה ולוחצים על מקום. המערכת חוסמת מה שבלתי אפשרי ומסמנת ב-! טעות תכנון, ובסוף אפשר להשוות לתוכנית של המחשב.',
   yard: 'מה רואים: מפת החצר, בלוק אחרי בלוק, וכל ערימה של מכולות לפי צבע הסוג. מה אפשר לעשות: ללחוץ על ערימה ולראות אילו מכולות בתוכה, מלמעלה למטה.',
   yardrules: 'מה רואים: רשימת חוקי החצר לפי סדר חשיבות (העליון הכי חשוב), כל חוק דולק (ON) או כבוי (OFF), ועל איזה סוג מכולות הוא חל. מתחת: איך מסדרים יבוא וריקות, טבלת ניסוי שמשווה את החוקים שלך לבלי חוקים ולכל החוקים (כמה הזזות מיותרות וכמה ערימות נתפסו), וכמה הזזות מיותרות היו בחצר האמיתית מאז ששינית חוקים. מה אפשר לעשות: להדליק ולכבות חוק, להזיז חוק למעלה או למטה בסדר החשיבות, לבחור לפזר נמוך או לערום גבוה, ולחזור לחוקים הרגילים.',
+  holds: 'מה רואים: בשם מי אתה פועל עכשיו (פקיד מכס, וטרינר, פקיד כספים או מפעיל הנמל), טבלה של 4 סוגי העיכוב ומי רשאי לשים ולשחרר כל אחד, כל המכולות שבעיכוב עכשיו עם הסיבה, ממתי ומי שם, והיסטוריה של כל פעולה, כולל ניסיונות שנדחו. מה אפשר לעשות: לבחור בשם מי לפעול, לשים עיכוב על מכולה עם סיבה, ולשחרר עיכוב. מי שאין לו הרשאה נדחה, והדחייה נרשמת.',
   inspector: 'מה רואים: מכולה אחת לעומק. למעלה המכולה עצמה (מספר, בעלים, סוג: לא משתנים). מתחת הביקורים שלה (UFV): כל פעם שהייתה בנמל, איך הגיעה ואיך יצאה. מתחת שבעת שלבי החיים של הביקור שנבחר, עם השעה של כל שלב, ואז ההזזות והחיובים של אותו ביקור. מה אפשר לעשות: לחפש מכולה, לבחור ביקור (Show), ולקפוץ למקום שלה בחצר.',
   inventory: 'מה רואים: רשימה של כל המכולות, עם הסוג, המיקום, המשקל, ימי האחסנה והעיכובים. מה אפשר לעשות: לשחרר עיכוב מכס, ולהציג גם מכולות שכבר יצאו.',
   gate: 'מה רואים: כל המשאיות שהגיעו לשער, ומה קרה לכל אחת (התקבלה, או נדחתה ולמה, למשל אין תור, הגיעה מוקדם או מאוחר מדי, עיכוב מכס או שער סגור), ואיזה תור כל משאית ניצלה. מה אפשר לעשות: להכניס משאית עם מכולה, או לשלוח משאית לקחת מכולה מהחצר. כל משאית צריכה תור מראש (מסך Truck Appointments). השער פתוח א\'-ה\' 05:00-24:00, שישי 05:00-14:45, שבת סגור.',
@@ -318,7 +330,9 @@ const TIPS = {
   unitYard: 'מראה את הערימה בחצר שבה המכולה עומדת עכשיו.',
   unitList: 'חוזר לרשימת כל המכולות.',
   ufv: 'מציג את שלבי החיים, ההזזות והחיובים של הביקור הזה.',
-  release: 'משחרר את עיכוב המכס. אחרי זה משאית יכולה לקחת את המכולה.',
+  release: el => { const t = HOLD_TYPES[(el.dataset.id || '').split(':')[1]] || HOLD_TYPES.CUSTOMS;
+    return `משחרר את עיכוב ה${t.he} מהמכולה. רק ${HOLD_ROLES_HE[t.role]} רשאי לשחרר אותו. אתה פועל עכשיו בתור ${HOLD_ROLES_HE[S.holdRole]}${t.role === S.holdRole ? ', אז זה יעבוד' : ', אז הניסיון יידחה וייכתב בהיסטוריה'}. כשאין למכולה עוד עיכובים, משאית או רכבת יכולות לקחת אותה.`; },
+  holdRole: el => `לפעול מעכשיו בתור ${HOLD_ROLES_HE[el.dataset.id]}. כל עיכוב שייך לגוף אחד, ורק הוא רשאי לשים ולשחרר אותו. ${Object.values(HOLD_TYPES).filter(t => t.role === el.dataset.id).map(t => 'ה' + HOLD_ROLES_HE[t.role] + ' אחראי על עיכוב ' + t.he + '.').join(' ')}`,
   showGone: 'מציג גם מכולות שכבר יצאו מהנמל.',
   showDone: 'מציג גם משימות שכבר הסתיימו.',
   invoice: 'מאגד את כל החיובים הפתוחים לחשבונית אחת לכל חברת ספנות.',
@@ -553,6 +567,40 @@ function returnUnit(u) {
   return u;
 }
 
+// ---------- holds (version 10) ----------
+const holdNames = u => u.holds.map(h => HOLD_TYPES[h]?.label || h).join(', ');
+const holdNewest = list => list.slice().sort((a, b) => b.t - a.t || b.id.localeCompare(a.id));
+const holdable = u => ['IMPORT', 'EMPTY'].includes(u.category) && !['DEPARTED', 'LOADED'].includes(u.state);
+// the APPLIED entry of a hold the box has now: reason, since when, by whom
+const holdNow = (u, type) => S.holdLog.findLast(x => x.unit === u.id && x.type === type && x.act === 'APPLIED');
+function holdEntry(u, type, act, who, reason, t) {
+  const e = { id: 'H' + String(++S.seq.hold).padStart(4, '0'), t: t ?? S.clock, unit: u.id, type, act, who, reason };
+  S.holdLog.push(e);
+  return e;
+}
+function putHold(u, type, reason, t) { u.holds.push(type); holdEntry(u, type, 'APPLIED', HOLD_TYPES[type].role, reason || HOLD_TYPES[type].reasons[0], t); }
+// the role you act as tries to put a hold on or take one off; the wrong role is refused, and the refusal stays in the history
+function holdAct(u, type, act, reason) {
+  const T = HOLD_TYPES[type], who = S.holdRole, verb = act === 'APPLIED' ? 'put on' : 'release';
+  if (T.role !== who) {
+    holdEntry(u, type, 'REFUSED', who, `Tried to ${verb}; only the ${HOLD_ROLES[T.role]} may`);
+    log('HOLD', `REFUSED: ${HOLD_ROLES[who]} tried to ${verb} a ${T.label} hold on ${u.id}`);
+    return { ok: false, msg: `Refused: you act as ${HOLD_ROLES[who]}. Only the ${HOLD_ROLES[T.role]} may ${verb} a ${T.label} hold. Choose who you act as in Yard > Holds & Permissions.` };
+  }
+  if (act === 'APPLIED') {
+    if (u.holds.includes(type)) return { ok: false, msg: `${u.id} already has a ${T.label} hold.` };
+    putHold(u, type, reason);
+    log('HOLD', `${T.label} hold on ${u.id} by ${HOLD_ROLES[who]}: ${holdNow(u, type).reason}`);
+    return { ok: true, msg: `${T.label} hold put on ${u.id}. The gate and the train will not take it until the ${HOLD_ROLES[who]} releases it.` };
+  }
+  if (!u.holds.includes(type)) return { ok: false, msg: `${u.id} has no ${T.label} hold.` };
+  const was = holdNow(u, type);
+  u.holds = u.holds.filter(h => h !== type);
+  holdEntry(u, type, 'RELEASED', who, was ? was.reason : '');
+  log('HOLD', `${T.label} hold released on ${u.id} by ${HOLD_ROLES[who]}`);
+  return { ok: true, msg: `${T.label} hold released on ${u.id}. ` + (u.holds.length ? `It still has a ${holdNames(u)} hold, so it still cannot leave.` : 'It has no holds left and can leave by truck or train.') };
+}
+
 // ISO 6346 check digit (letters skip multiples of 11)
 const LETTER = (() => { const m = {}; let v = 10; for (const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { if (v % 11 === 0) v++; m[c] = v++; } return m; })();
 function checkDigit(id10) {
@@ -569,8 +617,8 @@ function flash(type, text) { UI.msg = { type, text }; }
 function fresh() {
   S = {
     ver: STATE_VER, clock: 0, auto: false, workOn: true, rng: 20261022,
-    seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0, appt: 0 },
-    units: {}, stacks: {}, visits: [], trains: [], appts: [], apptRule: { required: true, cap: 3 }, yardRules: defaultYardRules(), yardSince: { t: 0, rehandles: 0, moves: 0 }, wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
+    seq: { cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0, appt: 0, hold: 0 },
+    units: {}, stacks: {}, visits: [], trains: [], holdLog: [], holdRole: 'CUSTOMS', appts: [], apptRule: { required: true, cap: 3 }, yardRules: defaultYardRules(), yardSince: { t: 0, rehandles: 0, moves: 0 }, wis: [], eq: [], charges: [], invoices: [], gate: [], log: [],
     stats: { rehandles: 0, moves: 0 },
     tariff: { lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 },
   };
@@ -585,7 +633,7 @@ function fresh() {
   const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6, '28', 1);
   for (let i = 0; i < 6; i++) {
     const u = addUnit({ line: i % 2 ? 'GRN' : 'BLU', category: 'IMPORT', iso: i % 3 ? '22G1' : '45G1', state: 'YARD', inTime: -5 * 1440 - i * 90 });
-    if (i === 1 || i === 4) u.holds.push('CUSTOMS');
+    if (i === 1 || i === 4) putHold(u, 'CUSTOMS', 'Customs inspection', u.inTime);
     placeUnit(u, planSlot(u));
   }
   for (let i = 0; i < 10; i++) {
@@ -629,7 +677,7 @@ function addVisit(vessel, line, etaIn, imports, quay, cranes) {
   S.visits.push(v);
   for (let i = 0; i < imports; i++) {
     const u = addUnit({ line, category: 'IMPORT', iso: i % 3 ? '22G1' : (i % 2 ? '45G1' : '22R1'), visit: v.id, state: 'ON_VESSEL' });
-    if (rand() < 0.25) u.holds.push('CUSTOMS');
+    if (rand() < 0.25) putHold(u, 'CUSTOMS', 'Documents missing');
     // imports arrive stowed bottom-up in the same fill order the planner uses
     const k = shipSlots(sizeOf(u)).find(s => !v.onboard[s]);
     if (k) { v.onboard[k] = u.id; u.vslot = k; }
@@ -647,6 +695,13 @@ function load() {
 }
 // one step per saved version; each step brings a save up by one version
 const MIGRATE = {
+  9(s) {   // version 9 -> 10: holds with a type, a reason and a history. Old holds were all customs; their reason was not kept
+    s.holdLog = s.holdLog || [];
+    s.holdRole = s.holdRole || 'CUSTOMS';
+    s.seq.hold = s.seq.hold || 0;
+    Object.values(s.units).forEach(u => (u.holds || []).forEach(type => s.holdLog.push({ id: 'H' + String(++s.seq.hold).padStart(4, '0'), t: u.inTime ?? s.clock,
+      unit: u.id, type, act: 'APPLIED', who: HOLD_TYPES[type]?.role || 'CUSTOMS', reason: 'Put on before version 10 (reason not kept)' })));
+  },
   8(s) {   // version 8 -> 9: yard rules. The default rules are what the yard did until now, so nothing moves
     s.yardRules = s.yardRules || defaultYardRules();
     s.yardSince = s.yardSince || { t: s.clock, rehandles: s.stats?.rehandles || 0, moves: s.stats?.moves || 0 };
@@ -708,7 +763,7 @@ function normalize(s) {
     ['eq', 'visits', 'wis', 'charges', 'invoices', 'gate', 'log'].every(k => Array.isArray(s[k]));
   if (!ok) throw new Error('unknown format');
   // fill counters and settings a hand-edited or older save may lack, and refuse positions that point nowhere
-  s.seq = Object.assign({ cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0, appt: 0 }, s.seq);
+  s.seq = Object.assign({ cntr: 400100, wi: 0, visit: 0, tx: 0, chg: 0, inv: 0, truck: 0, ufv: 0, train: 0, appt: 0, hold: 0 }, s.seq);
   s.stats = Object.assign({ rehandles: 0, moves: 0 }, s.stats);
   s.tariff = Object.assign({ lift: 85, gateFee: 30, storagePerDay: 20, freeDays: 3 }, s.tariff);
   if (Object.values(s.units).some(u => u.pos && !s.stacks[u.pos])) throw new Error('a unit is in a yard slot that does not exist');
@@ -1150,7 +1205,7 @@ function render() {
   const busy = S.eq.filter(e => e.status === 'BUSY').length;
   const planned = S.wis.filter(w => w.status === 'PLANNED').length;
   $('status').innerHTML = `<span>${psText}. Educational simulator &ndash; not Navis software, not affiliated with Navis or Kaleris.</span>
-    <span>User: trainee</span><span>Facility: DEMO</span><span>WI planned: ${planned}</span><span>Equipment busy: ${busy}/${S.eq.length}</span>`;
+    <span>User: trainee (${HOLD_ROLES[S.holdRole]})</span><span>Facility: DEMO</span><span>WI planned: ${planned}</span><span>Equipment busy: ${busy}/${S.eq.length}</span>`;
 }
 function header(title, concept, helpHe) {
   return `<h1 tabindex="0" data-tip="${esc(SCREEN_TIPS[UI.page])}">${title} <span class="q" aria-hidden="true">?</span></h1><div class="concept">N4 concept: ${concept}</div>` + (PREFS.help ? `<div class="help">${helpHe}</div>` : '');
@@ -1428,19 +1483,50 @@ const VIEWS = {
       ${ufv && ufv.legacy ? '<p class="note">This visit was saved before version 5, so the steps before that are not known.</p>' : ''}</fieldset>
       <fieldset><legend>Moves in this visit</legend>${moves.length ? `<table class="grid"><tr><th>WI</th><th>Kind</th><th>From</th><th>To</th><th>Status</th><th>Done</th></tr>` +
         moves.map(w => `<tr><td>${w.id}</td><td>${w.kind}</td><td class="mono">${esc(w.from || '')}</td><td class="mono">${esc(wiTo(w))}</td><td>${tag('st-' + w.status, w.status)}</td><td>${w.done != null ? fmt(w.done) : ''}</td></tr>`).join('') + '</table>' : '<p class="note">None.</p>'}</fieldset>
-      <fieldset><legend>Charges in this visit</legend>${chg.length ? chargeTable(chg) : '<p class="note">None.</p>'}</fieldset>`;
+      <fieldset><legend>Charges in this visit</legend>${chg.length ? chargeTable(chg) : '<p class="note">None.</p>'}</fieldset>
+      <fieldset><legend>Holds of this container (all visits)</legend>${(() => { const hl = S.holdLog.filter(e => e.unit === u.id);
+        return (u.holds.length ? `<p>On hold now: ${u.holds.map(h => tag('st-HOLD', h)).join(' ')}</p>` : '<p class="note">No hold now.</p>') + (hl.length ? `<table class="grid"><tr><th>When</th><th>Hold</th><th>Action</th><th>By</th><th>Reason</th></tr>` +
+          holdNewest(hl).map(e => `<tr><td>${fmt(e.t)}</td><td>${tag('st-HOLD', e.type)}</td><td>${tag('st-' + e.act, e.act)}</td><td>${HOLD_ROLES[e.who] || e.who}</td><td>${esc(e.reason || '')}</td></tr>`).join('') + '</table>' : ''); })()}</fieldset>`;
     return head + search + `<div class="insp">${unitBlock}${visitsBlock}</div>${lifeBlock}`;
   },
   inventory() {
     const units = Object.values(S.units).filter(u => u.state !== 'DEPARTED' || UI.showGone);
     return header('Unit Inventory', 'Units (containers) with category, freight kind, position, holds',
-      'כל מכולה במערכת. המספר שלה בנוי כמו מספר אמיתי: 4 אותיות של הבעלים, 6 ספרות, וספרת ביקורת בסוף (מחושבת בנוסחה של תקן ISO 6346). כאן גם משחררים עיכוב מכס, ורואים כמה ימים המכולה כבר בחצר וכמה אחסנה היא צוברת.') +
-      `<p><label><input type="checkbox" data-act="showGone" ${UI.showGone ? 'checked' : ''}> Show departed units</label></p>
+      'כל מכולה במערכת. המספר שלה בנוי כמו מספר אמיתי: 4 אותיות של הבעלים, 6 ספרות, וספרת ביקורת בסוף (מחושבת בנוסחה של תקן ISO 6346). כאן גם משחררים עיכוב (רק מי שרשאי, לפי בשם מי אתה פועל במסך Holds & Permissions), ורואים כמה ימים המכולה כבר בחצר וכמה אחסנה היא צוברת.') +
+      `<p><label><input type="checkbox" data-act="showGone" ${UI.showGone ? 'checked' : ''}> Show departed units</label> &nbsp; <span class="note">Releasing as: ${HOLD_ROLES[S.holdRole]}</span></p>
       <table class="grid"><tr><th>Unit</th><th>Type</th><th>Cat.</th><th>Line</th><th>Vessel visit</th><th>Train</th><th>Transit state</th><th>Position</th><th class="num">Tons</th><th class="num">Days</th><th class="num">Storage so far</th><th>Holds</th><th>Open WI</th></tr>` +
       units.map(u => `<tr class="${UI.unit === u.id ? 'sel' : ''}"><td>${unitLink(u.id)}</td><td>${u.iso} <span class="note">${ISO[u.iso]}</span></td><td class="c-${u.category}">${u.category}</td>
         <td>${u.line}</td><td>${u.visit ? esc(visitById(u.visit)?.vessel || '') + ' ' + u.visit : '-'}</td><td>${u.train || '-'}</td><td>${u.transit || '-'}</td><td class="mono">${posLabel(u)}</td>
         <td class="num">${u.weight}</td><td class="num">${u.inTime != null ? daysIn(u) : '-'}</td><td class="num">${u.inTime != null ? money(storageDue(u)) : '-'}</td>
-        <td>${u.holds.map(h => tag('st-HOLD', h) + ` <button class="sm" data-act="release" data-id="${u.id}">Release</button>`).join('')}</td><td>${u.wi || ''}</td></tr>`).join('') + '</table>';
+        <td>${u.holds.map(h => tag('st-HOLD', h) + ` <button class="sm" data-act="release" data-id="${u.id}:${h}">Release</button>`).join(' ')}</td><td>${u.wi || ''}</td></tr>`).join('') + '</table>';
+  },
+  holds() {
+    const head = header('Holds & Permissions', 'Holds and permissions: a hold type per authority, with a reason and a history; only the role that owns a hold may put it on or release it',
+      'עיכוב (Hold) אומר: המכולה הזאת לא יוצאת מהנמל עד שמישהו מאשר. בנמל יש כמה גופים שיכולים לעכב מכולה, ולכל אחד סיבה משלו: המכס (לבדוק מה יש בפנים ואם שילמו מס), השירותים הווטרינריים (מזון, צמחים ובעלי חיים), מחלקת הכספים של הנמל (מישהו חייב כסף), והנמל עצמו (מכולה פגועה או חותם שבור). ' +
+      'החוק החשוב: כל סוג עיכוב שייך לגוף אחד, ורק הוא רשאי לשים ולשחרר אותו. פקיד כספים לא יכול לשחרר עיכוב מכס, גם אם הוא רוצה. זו ההרשאה (Permission). ' +
+      'למעלה בוחרים בשם מי אתה פועל עכשיו. אם תנסה לשחרר עיכוב שאינו שלך, תקבל דחייה, והדחייה נכתבת בהיסטוריה (כמו במערכת אמיתית, שם רואים גם מי ניסה). מכולה עם כמה עיכובים יוצאת רק כשכולם שוחררו. כל עיכוב חוסם יציאה בשער ועלייה לרכבת.');
+    const me = S.holdRole, live = Object.values(S.units).filter(u => u.holds.length && u.state !== 'DEPARTED');
+    const roles = Object.entries(HOLD_ROLES).map(([id, name]) => `<button class="sm${id === me ? ' on' : ''}" data-act="holdRole" data-id="${id}">${name}</button>`).join(' ');
+    const mine = Object.values(HOLD_TYPES).filter(t => t.role === me).map(t => t.label);
+    const types = Object.entries(HOLD_TYPES).map(([id, t]) => `<tr><td>${tag('st-HOLD', id)} ${t.label}</td><td>${HOLD_ROLES[t.role]}${t.role === me ? ' <b>(you)</b>' : ''}</td>
+      <td>Gate out, train</td><td class="num">${live.filter(u => u.holds.includes(id)).length}</td></tr>`).join('');
+    const can = Object.values(S.units).filter(holdable);
+    const form = `<form class="row" data-form="hold">
+        <label data-tip="על איזו מכולה לשים עיכוב. ברשימה רק מכולות יבוא וריקות שעוד בנמל או בדרך אליו (מכולת ייצוא יוצאת באונייה, ועיכוב בגרסה הזאת לא עוצר העמסה לאונייה). בסוגריים: העיכובים שכבר יש לה.">Container <select name="unit">${can.map(u => `<option value="${u.id}">${u.id} ${u.category} ${u.state}${u.holds.length ? ' [' + u.holds.join(', ') + ']' : ''}</option>`).join('')}</select></label>
+        <label data-tip="סוג העיכוב. כל סוג שייך לגוף אחד: CUSTOMS למכס, VET לווטרינר, DEBT לפקיד הכספים, DAMAGE למפעיל הנמל. אם אתה לא פועל בשם הגוף הנכון, תקבל דחייה.">Hold type <select name="type">${Object.entries(HOLD_TYPES).map(([id, t]) => `<option value="${id}"${t.role === me ? ' selected' : ''}>${id} ${t.label} (${HOLD_ROLES[t.role]})</option>`).join('')}</select></label>
+        <label data-tip="למה עוצרים את המכולה. אפשר לבחור מהרשימה או לכתוב בעצמך. אם משאירים ריק, נכתבת הסיבה הראשונה של הסוג. הסיבה נשמרת בהיסטוריה.">Reason <input name="reason" list="holdReasons" maxlength="80" style="width:220px"></label>
+        <datalist id="holdReasons">${Object.values(HOLD_TYPES).flatMap(t => t.reasons).map(r => `<option value="${esc(r)}">`).join('')}</datalist>
+        <button data-tip="שם את העיכוב על המכולה, בשם מי שאתה פועל עכשיו. מעכשיו השער לא ייתן למשאית לקחת אותה והרכבת לא תעמיס אותה, עד שישחררו.">Put on hold</button></form>`;
+    const active = live.flatMap(u => u.holds.map(h => { const e = holdNow(u, h);
+      return `<tr><td>${unitLink(u.id)}</td><td>${tag('st-HOLD', h)}</td><td>${esc(e?.reason || '-')}</td><td>${e ? fmt(e.t) : '-'}</td><td>${e ? HOLD_ROLES[e.who] || e.who : '-'}</td>
+        <td><button class="sm" data-act="release" data-id="${u.id}:${h}">Release</button></td></tr>`; })).join('');
+    const hist = holdNewest(S.holdLog).slice(0, 60).map(e => `<tr><td>${fmt(e.t)}</td><td>${unitLink(e.unit)}</td><td>${tag('st-HOLD', e.type)}</td><td>${tag('st-' + e.act, e.act)}</td><td>${HOLD_ROLES[e.who] || e.who}</td><td>${esc(e.reason || '')}</td></tr>`).join('');
+    return head + `<fieldset><legend>Who you are acting as</legend><p>${roles}</p>
+        <p class="note">${HOLD_ROLES[me]}: may put on and release ${mine.length ? mine.join(', ') + ' holds' : 'no hold type'}. Everything else is refused.</p></fieldset>
+      <fieldset><legend>Hold types and who may release them</legend><table class="grid"><tr><th>Hold</th><th>Put on and released by</th><th>Blocks</th><th class="num">Boxes on hold now</th></tr>${types}</table></fieldset>
+      <fieldset><legend>Put a hold on a container</legend>${can.length ? form : '<p class="note">No import or empty container in the port.</p>'}</fieldset>
+      <fieldset><legend>Containers on hold now</legend>${active ? `<table class="grid"><tr><th>Unit</th><th>Hold</th><th>Reason</th><th>Since</th><th>Put on by</th><th>Release</th></tr>${active}</table>` : '<p class="note">No container is on hold.</p>'}</fieldset>
+      <fieldset><legend>Hold history (newest first)</legend>${hist ? `<table class="grid"><tr><th>When</th><th>Unit</th><th>Hold</th><th>Action</th><th>By</th><th>Reason</th></tr>${hist}</table>` : '<p class="note">Nothing yet.</p>'}</fieldset>`;
   },
   gate() {
     const open = S.visits.filter(v => !['DEPARTED'].includes(v.phase));
@@ -1634,7 +1720,7 @@ const VIEWS = {
       ['Train Visits', 'ביקור רכבת עם אותם 5 שלבים כמו אונייה, קרונות של 40 רגל, מסילה אחת לרכבת אחת. הרכבת מביאה ייצוא ולוקחת יבוא שהוזמן לה. פריקה לפני העמסה, עגורן רכבת + עגורן חצר לכל הזזה, עיכוב מכס חוסם עלייה לרכבת.', 'ב-N4 רכבת היא עוד סוג של Carrier Visit (כמו אונייה ומשאית), עם קרונות (railcars), תכנון קרונות ותורי עבודה לרכבת (Rail).', 'אין סוגי קרונות שונים, אין משקל מקסימלי לקרון, אין סדר קרונות לפי יעד, ואין הרכבה ופירוק של רכבות. המכונה שעובדת על המסילה בנמל הדרום לא ידועה, ולכן עגורן רכבת אחד.'],
       ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין אין מצלמות/OCR.'],
       ['Truck Appointments', 'תור לשעה לכל משאית, מספר מקומות לכל שעה, חלון של חצי שעה לפני ואחרי. השער דוחה משאית בלי תור, מוקדמת, מאוחרת, או עם תור למטרה אחרת. תור שלא נוצל = MISSED.', 'ב-N4 יש תורים למשאיות (Gate Appointments) עם מכסות לפי שעה, שהשער בודק כשהמשאית מגיעה. בנמלים רבים מזמינים דרך אתר או אפליקציה של הנמל.', 'אין קנס על תור שהוחמץ, אין מכסה לפי סוג משאית או חברת הובלה, והמשאית מגיעה רק כשאתה לוחץ.'],
-      ['Holds', 'עיכוב מכס חוסם יציאה בשער עד שמשחררים.', 'N4 תומך בעיכובים והרשאות על מכולות.', 'רק סוג עיכוב אחד.'],
+      ['Holds & Permissions', '4 סוגי עיכוב (מכס, וטרינריה, חוב, נזק). כל סוג שייך לגוף אחד, ורק הוא רשאי לשים ולשחרר. לכל עיכוב סיבה, שעה ומי שם, והיסטוריה מלאה כולל ניסיונות שנדחו. כל עיכוב חוסם יציאה בשער וברכבת.', 'N4 מנהל עיכובים והרשאות (holds and permissions) על מכולות, וכל סוג עיכוב מוגדר עם מי רשאי לשחרר אותו.', 'סוגים קבועים, בלי משתמשים אמיתיים (בוחרים תפקיד ביד, משתמשים אמיתיים בגרסה 12). עיכוב לא חוסם העמסה לאונייה. עיכוב חוב לא משתחרר לבד כשמשלמים.'],
       ['Work Queues', 'כל תנועה היא הוראת עבודה בתור לפי סוג.', 'N4 יוצר הוראות עבודה ושולח משימות למערכת בקרת הציוד (ECS).', 'כל תנועה לוקחת בדיוק 15 דקות.'],
       ['נמל הדרום אשדוד', 'הנמל בנוי לפי נמל הדרום (HCT) מוקטן פי 4: רציפים 27 ו-28, 2 עגורני רציף, 8 עגורני חצר אוטומטיים ב-4 בלוקים, מסילת רכבת. אין עבודה משישי 15:00 עד מוצאי שבת 20:00, והשער פתוח לפי השעות הרשמיות.', 'לפי מקור ציבורי יחיד, נמל הדרום משתמש כנראה במערכת TOS של Konecranes, ולא ב-N4. הסימולטור נשאר "בסגנון N4" כמודל לימוד.', 'מספר המקומות בחצר לא אמיתי (לא פורסם). אין חגים ואין שעון קיץ. כלי ההסעה בין הרציף לחצר לא ידוע, ולכן AGV.'],
       ['Equipment (ECS)', 'QC, AGV, ושני ASC בכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
@@ -1779,7 +1865,7 @@ const ACTIONS = {
     if (!['INBOUND', 'ARRIVED'].includes(t.phase) || !railReady(u)) return;
     u.train = t.id;
     log('RAIL', `${u.id} booked to leave by ${t.name} (${t.id})`);
-    flash(u.holds.length ? 'err' : 'ok', `${u.id} will leave by train ${t.id}.` + (u.holds.length ? ` It has a ${u.holds.join(', ')} hold: it will not be loaded until the hold is released.` : ''));
+    flash(u.holds.length ? 'err' : 'ok', `${u.id} will leave by train ${t.id}.` + (u.holds.length ? ` It has a ${holdNames(u)} hold: it will not be loaded until the hold is released.` : ''));
   },
   trainUnbook: id => {
     const [tid, uid] = id.split(':'), t = trainById(tid), u = S.units[uid];
@@ -1839,7 +1925,8 @@ const ACTIONS = {
     UI.unit = u.id; UI.ufv = null; UI.page = 'inspector';
     UI.msg = null;
   },
-  release: id => { const u = S.units[id]; u.holds = []; log('GATE', `Customs hold released on ${id}`); flash('ok', `Hold released on ${id}. It can now leave through the gate.`); },
+  release: id => { const [uid, type] = id.split(':'), u = S.units[uid], t = type || u.holds[0]; if (!t) return; const r = holdAct(u, t, 'RELEASED'); flash(r.ok ? 'ok' : 'err', r.msg); },
+  holdRole: id => { if (!HOLD_ROLES[id]) return; S.holdRole = id; flash('ok', `You now act as ${HOLD_ROLES[id]}.`); },
   showGone: () => { UI.showGone = !UI.showGone; },
   showDone: () => { UI.showDone = !UI.showDone; },
   prefHelp: () => { PREFS.help = !PREFS.help; savePrefs(); },
@@ -1970,7 +2057,7 @@ const FORMS = {
     if (u.holds.length) {
       tx.status = 'REJECTED'; tx.reason = 'Hold: ' + u.holds.join(', ');
       log('GATE', `${tx.truck} REJECTED for ${u.id}: ${tx.reason}`);
-      flash('err', `Truck rejected: ${u.id} has a ${u.holds.join(', ')} hold. Release it in Unit Inventory first.`);
+      flash('err', `Truck rejected: ${u.id} has a ${holdNames(u)} hold. Only ${[...new Set(u.holds.map(h => 'the ' + HOLD_ROLES[HOLD_TYPES[h].role]))].join(' and ')} may release it (Yard > Holds & Permissions).`);
       return;
     }
     tx.status = 'PLANNED';
@@ -1989,8 +2076,14 @@ const FORMS = {
     if (kind === 'DELIVER' && (!u || !apptPickups().includes(u))) { flash('err', 'Pick the import the truck comes for. Only boxes in the yard, not booked to a train and without a pickup already booked, can be picked up.'); return; }
     const a = addAppt(kind, slot, u ? u.id : null);
     flash('ok', `Appointment ${a.id} booked for truck ${a.truck}, ${slotLabel(slot)}. The gate lets it in from ${fmt(slot - APPT_GRACE).slice(-5)} to ${fmt(slot + 60 + APPT_GRACE).slice(-5)}.` +
-      (u && u.holds.length ? ` Note: ${u.id} is on ${u.holds.join(', ')} hold, so the gate will still refuse it until the hold is released.` : ''));
+      (u && u.holds.length ? ` Note: ${u.id} is on ${holdNames(u)} hold, so the gate will still refuse it until the hold is released.` : ''));
     UI.apptSlot = null;
+  },
+  hold: f => {
+    const u = S.units[f.unit];
+    if (!u || !holdable(u) || !HOLD_TYPES[f.type]) { flash('err', 'Pick a container from the list and a hold type.'); return; }
+    const r = holdAct(u, f.type, 'APPLIED', (f.reason || '').trim().slice(0, 80));
+    flash(r.ok ? 'ok' : 'err', r.msg);
   },
   apptRule: f => {
     S.apptRule.required = f.required === 'on';
@@ -2035,6 +2128,17 @@ function infoTip(el) {
 }
 const INFO = {
   th: {
+    'Hold': 'סוג העיכוב: CUSTOMS מכס, VET וטרינריה, DEBT חוב, DAMAGE נזק.',
+    'Put on and released by': 'הגוף היחיד שרשאי לשים את העיכוב הזה ולשחרר אותו. כל אחד אחר יקבל דחייה.',
+    'Blocks': 'מה העיכוב עוצר: משאית לא יכולה לקחת את המכולה בשער, והרכבת לא תעמיס אותה. העמסה לאונייה לא נעצרת בגרסה הזאת.',
+    'Boxes on hold now': 'כמה מכולות בנמל נמצאות עכשיו בעיכוב מהסוג הזה.',
+    'Reason': 'למה עוצרים את המכולה, כמו שנכתב כששמו את העיכוב.',
+    'Since': 'מתי שמו את העיכוב, לפי שעון הנמל.',
+    'Put on by': 'מי שם את העיכוב (איזה גוף).',
+    'Release': 'כפתור לשחרור העיכוב. רק הגוף שהעיכוב שייך לו יצליח.',
+    'When': 'מתי זה קרה, לפי שעון הנמל.',
+    'Action': 'מה עשו: APPLIED = שמו עיכוב, RELEASED = שחררו, REFUSED = מישהו בלי הרשאה ניסה ונדחה.',
+    'By': 'בשם איזה גוף פעלו (מי לחץ על הכפתור).',
     'Visit': 'מספר הביקור. כל פעם שאונייה מגיעה לנמל זה ביקור חדש, עם מספר משלו (V001, V002...).',
     'Vessel': 'שם האונייה.',
     'Line': 'חברת הספנות (קו הספנות) שהאונייה או המכולה שייכת לה. היא מקבלת את החשבונית.',
@@ -2154,12 +2258,24 @@ const INFO = {
     'MISSED': 'המשאית לא הגיעה עד חצי שעה אחרי סוף השעה שלה (או הגיעה מאוחר מדי). התור הוחמץ, והמקום נשאר תפוס בספירה של אותה שעה.',
     'CANCELLED': 'התור בוטל. המקום בשעה הזאת התפנה למשאית אחרת.',
     'CONFLICT': 'התנגשות: שתי אוניות רוצות את אותו רציף באותו זמן. אחת תחכה בים עד שהשנייה תצא. פתרון: להעביר לרציף השני או לדחות את ההגעה.',
-    'CUSTOMS': 'עיכוב מכס: המכולה לא יכולה לצאת מהשער עד שהמכס משחרר אותה (כפתור Release).',
+    'CUSTOMS': 'עיכוב מכס: המכס רוצה לבדוק את המכולה או את המסמכים שלה. רק פקיד מכס רשאי לשחרר. עד אז היא לא יוצאת בשער ולא עולה לרכבת.',
+    'VET': 'עיכוב וטרינריה: במכולה מזון, צמחים או מוצרים מבעלי חיים, והשירותים הווטרינריים צריכים לבדוק אותה. רק וטרינר רשאי לשחרר.',
+    'DEBT': 'עיכוב חוב: מישהו חייב לנמל כסף (למשל על אחסנה). רק פקיד הכספים של הנמל רשאי לשחרר, אחרי שהחוב מסודר.',
+    'DAMAGE': 'עיכוב נזק: המכולה פגועה, דולפת או שהחותם שלה שבור, והנמל צריך לבדוק אותה. רק מפעיל הנמל רשאי לשחרר.',
+    'APPLIED': 'שמו עיכוב על המכולה.',
+    'RELEASED': 'שחררו את העיכוב.',
+    'REFUSED': 'מישהו בלי הרשאה ניסה לשים או לשחרר את העיכוב, והמערכת דחתה אותו. הניסיון נשמר כדי שיהיה ידוע מי ניסה.',
     'DRAFT': 'טיוטה: החשבונית עוד לא נשלחה ללקוח, ואפשר לנעול אותה (Finalize).',
     'FINAL': 'החשבונית נעולה ונשלחה ללקוח. מחכה לתשלום.',
     'PAID': 'החשבונית שולמה.',
   },
   part: {
+    'Who you are acting as': 'בשם איזה גוף אתה פועל עכשיו. כל גוף רשאי לשים ולשחרר רק את סוג העיכוב שלו.',
+    'Hold types and who may release them': 'ארבעת סוגי העיכוב, מי רשאי לשים ולשחרר כל אחד, מה הם עוצרים וכמה מכולות בכל סוג עכשיו. (you) = הסוג שאתה רשאי לשים ולשחרר.',
+    'Put a hold on a container': 'כאן שמים עיכוב על מכולה: בוחרים מכולה, סוג וסיבה.',
+    'Containers on hold now': 'כל העיכובים שעוד לא שוחררו: איזו מכולה, איזה סוג, למה, ממתי ומי שם. מכולה עם שני עיכובים מופיעה פעמיים.',
+    'Hold history': 'כל פעולה על עיכובים לפי הסדר, החדשה למעלה: מי שם, מי שחרר, ומי ניסה בלי הרשאה ונדחה.',
+    'Holds of this container': 'העיכובים שיש למכולה עכשיו, וכל מה שקרה עם עיכובים על המכולה הזאת אי פעם.',
     'Terminal layout': 'מפת הנמל מלמעלה, מהים ליבשה: הים, שני הרציפים עם האוניות, עגורני הרציף והרכבים, 4 הבלוקים בחצר עם העגורנים שלהם, ומסילת הרכבת.',
     'Vessels': 'האוניות שעוד לא יצאו מהנמל, ובאיזה שלב כל אחת.',
     'Units by category and state': 'ספירה של כל המכולות: לפי סוג (שורות) ולפי איפה הן עכשיו (עמודות).',

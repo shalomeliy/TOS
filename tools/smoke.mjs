@@ -32,7 +32,7 @@ check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO
 check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -40,7 +40,7 @@ for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules'
 
 // rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -614,7 +614,7 @@ check(s.charges.filter(c => c.type === 'LIFT_RAIL').length === 6, 'six rail lift
 check(s.visits[1].phase === 'INBOUND' && exIn.every(u => s.units[u.id].category === 'EXPORT'), 'rail exports wait in the yard for V002');
 // release the hold: the box goes on the train even though work was complete; then the train departs
 await page.click('nav a[data-id="inventory"]');
-await page.click(`[data-act="release"][data-id="${heldImp.id}"]`);
+await page.click(`[data-act="release"][data-id="${heldImp.id}:CUSTOMS"]`);
 for (let i = 0; i < 2; i++) await page.click('[data-act="cycle"]');
 await page.click('nav a[data-id="rail"]');
 await page.click('[data-act="trainDepart"][data-id="T001"]');
@@ -757,12 +757,73 @@ await page.click('nav a[data-id="yardrules"]');
 await page.click('[data-act="rulesDefault"]');
 s = await state();
 check(s.yardRules.order[0] === 'VESSEL' && !s.yardRules.on.POD && s.yardRules.imports === 'SPREAD', 'back to the default rules');
+// ---------- version 10: holds and permissions ----------
+await page.click('nav a[data-id="holds"]');
+s = await state();
+check(s.holdRole === 'CUSTOMS' && Object.values(s.units).filter(u => u.holds.length).every(u => u.holds.every(h => s.holdLog.some(e => e.unit === u.id && e.type === h && e.act === 'APPLIED'))),
+  'default role is customs, and every hold in the demo has an APPLIED entry with a reason');
+const h10 = await page.evaluate(() => { const u = Object.values(S.units).find(x => x.category === 'IMPORT' && x.state === 'YARD' && !x.holds.length && !x.train && !x.wi); S.apptRule.required = false; return u.id; });
+// customs officer tries a veterinary hold: refused, kept in the history, nothing changes
+await page.selectOption('[data-form="hold"] select[name="unit"]', h10);
+await page.selectOption('[data-form="hold"] select[name="type"]', 'VET');
+await page.click('[data-form="hold"] button');
+s = await state();
+check(!s.units[h10].holds.length && s.holdLog.at(-1).act === 'REFUSED' && s.holdLog.at(-1).who === 'CUSTOMS' && (await page.textContent('.flash')).includes('Refused'), 'a customs officer may not put on a veterinary hold');
+// as the vet: the hold goes on with its reason
+await page.click('[data-act="holdRole"][data-id="VET"]');
+await page.selectOption('[data-form="hold"] select[name="unit"]', h10);
+await page.selectOption('[data-form="hold"] select[name="type"]', 'VET');
+await page.fill('[data-form="hold"] input[name="reason"]', 'Plant products: pest check');
+await page.click('[data-form="hold"] button');
+// and the finance clerk adds a debt hold with no reason typed: the first reason of the type is used
+await page.click('[data-act="holdRole"][data-id="FINANCE"]');
+await page.selectOption('[data-form="hold"] select[name="unit"]', h10);
+await page.selectOption('[data-form="hold"] select[name="type"]', 'DEBT');
+await page.click('[data-form="hold"] button');
+s = await state();
+check(s.units[h10].holds.join() === 'VET,DEBT' && s.holdLog.some(e => e.unit === h10 && e.type === 'VET' && e.act === 'APPLIED' && e.reason === 'Plant products: pest check' && e.who === 'VET')
+  && s.holdLog.at(-1).reason === 'Unpaid storage' && s.holdLog.at(-1).who === 'FINANCE', 'vet and debt holds put on by their owners, with reasons');
+// the gate refuses the box and names who may release it
+await page.click('nav a[data-id="gate"]');
+await page.selectOption('[data-form="gateout"] select[name="unit"]', h10);
+await page.click('[data-form="gateout"] button');
+s = await state();
+check(s.gate.at(-1).status === 'REJECTED' && s.gate.at(-1).reason.includes('VET') && (await page.textContent('.flash')).includes('Veterinary inspector'), 'gate refuses a box on a veterinary and debt hold');
+// the terminal operator cannot release either; the finance clerk releases only the debt
+await page.click('nav a[data-id="holds"]');
+await page.click('[data-act="holdRole"][data-id="TERMINAL"]');
+await page.click(`[data-act="release"][data-id="${h10}:VET"]`);
+s = await state();
+check(s.units[h10].holds.includes('VET') && s.holdLog.at(-1).act === 'REFUSED' && s.holdLog.at(-1).who === 'TERMINAL', 'the terminal operator may not release a veterinary hold');
+await page.click('[data-act="holdRole"][data-id="FINANCE"]');
+await page.click(`[data-act="release"][data-id="${h10}:DEBT"]`);
+s = await state();
+check(s.units[h10].holds.join() === 'VET' && s.holdLog.at(-1).act === 'RELEASED' && (await page.textContent('.flash')).includes('still has'), 'debt released, the veterinary hold still blocks');
+await page.click('[data-act="holdRole"][data-id="VET"]');
+await page.click(`[data-act="release"][data-id="${h10}:VET"]`);
+s = await state();
+check(!s.units[h10].holds.length && s.holdLog.at(-1).act === 'RELEASED' && s.holdLog.at(-1).reason === 'Plant products: pest check', 'veterinary hold released, the history keeps its reason');
+await page.click('nav a[data-id="gate"]');
+await page.selectOption('[data-form="gateout"] select[name="unit"]', h10);
+await page.click('[data-form="gateout"] button');
+s = await state();
+check(s.gate.at(-1).status === 'PLANNED', 'with no holds left the gate lets the truck take the box');
+// the inspector shows the box's hold history
+await page.evaluate(id => { UI.unit = id; UI.page = 'inspector'; render(); }, h10);
+check((await page.textContent('#content')).includes('Holds of this container') && (await page.$$('#content .st-REFUSED')).length === 2, 'unit inspector shows the hold history with the refusals');
+noTip = await auditTips('v10');
+check(noTip.length === 0, 'tooltips missing after holds:\n  ' + noTip.join('\n  '));
+await page.click('nav a[data-id="holds"]');
+await page.click('[data-act="holdRole"][data-id="CUSTOMS"]');
 // an older save gets no appointments and the rule switched on
 await page.evaluate(raw => localStorage.setItem('tos-trainer-v1', raw), readFileSync(resolve('tools/fixtures/save-v4.json'), 'utf8'));
 await page.reload();
 s = await state();
 check(s.ver === CUR_VER && s.appts.length === 0 && s.apptRule.required && s.apptRule.cap === 3, 'old save gets appointments, none booked');
 check(s.yardRules.on.VESSEL && !s.yardRules.on.POD && s.yardRules.imports === 'SPREAD' && s.yardSince, 'old save gets the default yard rules');
+check(s.holdRole === 'CUSTOMS' && Array.isArray(s.holdLog) && Object.values(s.units).filter(u => u.holds.length).every(u => s.holdLog.some(e => e.unit === u.id && e.act === 'APPLIED')), 'old save gets a hold history for the holds it had');
+await page.click('nav a[data-id="holds"]');
+check((await page.textContent('#content')).includes('Hold types and who may release them') && !(await page.$('.flash.err')), 'holds screen works on an old save');
 await page.click('nav a[data-id="yardrules"]');
 check((await page.textContent('#content')).includes('Your rules'), 'yard rules screen works on an old save');
 await page.click('nav a[data-id="appts"]');
@@ -771,7 +832,7 @@ await page.click('[data-act="reset"]');
 
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yardrules', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
+for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yardrules', 'holds', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }
