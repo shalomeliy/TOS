@@ -1,0 +1,47 @@
+## 1. Speed
+| CPU | boxes in yard | load (ms) | fresh + first draw (ms) | cycles | cycle avg / max (ms) | draw avg / max (ms) |
+|---|---|---|---|---|---|---|
+| normal | 400 (total 599) | 24 | 7.0 | 30 | 2.24 / 9.90 | 3.4 / 7.5 |
+| normal | 3000 (total 3187) | 24 | 11.0 | 29 | 1.81 / 8.30 | 3.1 / 5.7 |
+| normal | 20000 (total 12089) | 21 | 17.5 | 31 | 2.50 / 8.80 | 4.1 / 8.0 |
+| slow x4 | 400 (total 599) | 88 | 22.5 | 30 | 8.54 / 42.90 | 16.3 / 37.7 |
+| slow x4 | 3000 (total 3187) | 94 | 35.1 | 29 | 8.27 / 35.40 | 14.6 / 30.3 |
+| slow x4 | 20000 (total 12089) | 88 | 59.5 | 31 | 7.34 / 39.40 | 13.4 / 26.0 |
+
+Today's yard search (`planSlot` in index.html), one call:
+- today (48 stacks): 0.02 ms
+- 5,632 stacks, 0 open WI: 3.03 ms
+- 5,632 stacks, 300 open WI: 7.83 ms
+
+## 2. Flow and the reject chain
+PASS  full run seed 1: 30 cycles, open 0, errors 0, deadlock false
+PASS  full run seed 2: 29 cycles, open 0, errors 0, deadlock false
+PASS  full run seed 3: 29 cycles, open 0, errors 0, deadlock false
+PASS  full run seed 4: 32 cycles, open 0, errors 0, deadlock false
+PASS  full run seed 5: 28 cycles, open 0, errors 0, deadlock false
+INFO  lock-up hunt, all 8 QCs into one block: without lane booking 0 of 180 runs locked up
+PASS  lock-up hunt with the lane booked when the yard crane starts a Load: 0 of 180 runs locked up
+INFO  crew size: 1 sprinter = 36 cycles (QC idle 262), 2 = 29 (144), 3 = 29 (138)
+PASS  with 3 sprinters the quay cranes finish in fewer cycles than with 1
+PASS  with 1 sprinter, 8 quay cranes say "all 4 lanes occupied"
+PASS  QC03 with 0 sprinters: "no sprinter assigned"
+PASS  a 4th sprinter for QC01: "max 3"
+PASS  yard crane in workshop: TP fills, sprinter waits: "block 05, water-side TP: all 8 zones occupied"
+PASS  crane back: everything flows on by itself, 0 open
+PASS  16 boxes of 20 ft as 8 twins: quay crane 8 lifts, sprinters 8 trips, yard crane 16 lifts
+PASS  reject command only (sprinter): back to the same sprinter in 8 of 8 tries, returns counter = 1
+PASS  reject command + machine (SP10): the trip went to SP:SP11 of the same quay crane QC04, never back to SP10
+PASS  SP10 took a different command already in the next cycle
+PASS  the run still finishes: 0 open, 0 errors
+PASS  WI0097 rejected by ASC-04W: waits, "rejected by ASC-04W, no other ASC can do this stage - waiting"
+PASS  manual Redeck closes it, nothing open, no box doubled
+PASS  reject machine only: "QC05: the machine has an open command (WI0131). Reject the command too"
+PASS  QC03 stuck: 27 of its commands wait (none lost), its sprinters worked at QC04 within 2 cycles
+PASS  QC03 back: the day finishes
+PASS  chaos seed 11: 28 rejects (14 with machine), 29 cycles, 9 closed by hand, still open: none
+PASS  chaos seed 12: 29 rejects (13 with machine), 28 cycles, 7 closed by hand, still open: WI0068 DISCHARGE SP: rejected by SP05, SP06, no other SP can do this stage - waiting
+PASS  chaos seed 13: 26 rejects (11 with machine), 34 cycles, 7 closed by hand, still open: none
+PASS  chaos seed 14: 30 rejects (13 with machine), 30 cycles, 6 closed by hand, still open: none
+PASS  chaos seed 15: 35 rejects (18 with machine), 34 cycles, 9 closed by hand, still open: none
+
+ALL PASS

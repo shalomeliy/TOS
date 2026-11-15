@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spike - full-size training terminal</title>
+<style>
+  body { font: 12px Tahoma, Verdana, sans-serif; margin: 0; background: #d4d0c8; color: #000; }
+  header { background: #0a246a; color: #fff; padding: 4px 8px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; padding: 6px; }
+  fieldset { border: 1px solid #808080; background: #fff; margin: 0; min-width: 0; }
+  canvas { width: 100%; height: auto; display: block; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border: 1px solid #c0c0c0; padding: 1px 4px; text-align: left; white-space: nowrap; }
+  .scroll { max-height: 260px; overflow: auto; }
+  .bays { display: grid; grid-template-columns: repeat(22, 1fr); gap: 1px; }
+  .bay { border: 1px solid #999; text-align: center; font-size: 10px; }
+  .bay.rf { background: #dde8ff; }
+  .tp { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin: 4px 0; }
+  .tp div { border: 1px solid #555; text-align: center; font-size: 10px; min-height: 16px; }
+  @media (max-width: 600px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <b title="ניסוי זמני: בודק אם המסוף המלא נטען מהר ואם פקודה עם שלבים ודחייה זורמת בלי מכולה תקועה">Spike: full-size training terminal (throwaway)</b>
+  <span id="clock" title="השעה בשעון הסימולציה. כל סבב = רבע שעה">-</span>
+  <button id="btnCycle" title="מריץ סבב אחד: כל מכונה עושה מהלך אחד">Cycle</button>
+  <button id="btnRun" title="מריץ סבבים עד שכל הפקודות נגמרו">Run to end</button>
+  <span id="stat" title="כמה פקודות פתוחות, כמה זמן לקח הסבב האחרון">-</span>
+</header>
+<main>
+  <fieldset><legend title="מפת כל המסוף: רציף A עם 8 עגורני רציף, 16 בלוקים, מעבר בין בלוק 8 ל-9">Terminal map</legend>
+    <canvas id="map" width="960" height="420" title="מפת המסוף. כל אריח הוא בלוק, המספר אומר כמה מקומות תפוסים"></canvas>
+    <div id="mapText" class="scroll" title="אותה מפה בטקסט, לקורא מסך ולטלפון"></div>
+  </fieldset>
+  <fieldset><legend title="בלוק אחד: 44 שורות, אזור הקירור, ושני ה-TP">Block <span id="blkId">05</span></legend>
+    <div id="blk"></div>
+  </fieldset>
+  <fieldset><legend title="כל המכונות ומצבן במילים">Equipment</legend><div id="eq" class="scroll"></div></fieldset>
+  <fieldset><legend title="הפקודות הפתוחות: באיזה שלב ואצל איזו מכונה">Commands</legend><div id="cmds" class="scroll"></div></fieldset>
+</main>
+<script>
+'use strict';
+// ---------- parameters (masked training terminal, docs/specs/terminal-real-layout.md) ----------
+const P = { BLOCKS: 16, W: 8, L: 44, H: 6, QC: 8, LANES: 4, SP: 36, ZONES: 8, RF_FROM: 20, RF_TO: 24, DG: [1, 8, 9, 16], QC_MOVES: 3 };
+// a cycle is a quarter hour: a quay crane makes up to 3 lifts in it, a sprinter one trip, a yard crane one lift
+const pad = n => String(n).padStart(2, '0');
+let seed = 1;
+const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+const pick = a => a[Math.floor(rand() * a.length)];
+
+let S;
+
+function fresh(opts = {}) {
+  seed = opts.seed || 1;
+  S = { clock: 0, units: {}, stacks: [], used: [], tpW: {}, lanes: {}, eq: [], cmds: [], log: [], moves: 0, lastMoveCycle: 0, cycles: 0,
+        reserveLane: opts.reserveLane !== false, crew: {}, warnings: [], hold: [] };
+  for (let b = 1; b <= P.BLOCKS; b++) { S.stacks[b] = Array.from({ length: P.L * P.W }, () => []); S.hold[b] = new Set(); S.used[b] = 0; S.tpW[b] = Array(P.ZONES).fill(null); }
+  for (let q = 1; q <= P.QC; q++) {
+    const id = 'QC' + pad(q);
+    S.lanes[id] = Array(P.LANES).fill(null); S.crew[id] = [];
+    S.eq.push({ id, type: 'QC', vessel: q <= 4 ? 'V1' : 'V2', status: 'IDLE', cmd: null, why: '', moves: 0, waited: 0 });
+  }
+  for (let b = 1; b <= P.BLOCKS; b++) for (const side of ['W', 'L'])
+    S.eq.push({ id: `ASC-${pad(b)}${side}`, type: 'ASC', block: b, side, status: 'IDLE', cmd: null, why: '', moves: 0 });
+  for (let s = 1; s <= P.SP; s++) S.eq.push({ id: 'SP' + pad(s), type: 'SP', qc: null, status: 'IDLE', cmd: null, why: '', moves: 0 });
+  // crew: opts.crew sprinters per QC (default 2)
+  const crew = opts.crew || 2; let n = 0;
+  for (let q = 1; q <= P.QC; q++) for (let i = 0; i < crew; i++) assign(eq('SP' + pad(++n)), 'QC' + pad(q));
+  // yard: opts.yard boxes spread over the 16 blocks, low stacks
+  let u = 0;
+  const mk = (size, extra) => { const id = 'TRNU' + String(++u).padStart(6, '0'); S.units[id] = { id, size, ...extra }; return id; };
+  for (let i = 0; i < (opts.yard ?? 400); i++) {
+    const b = 1 + Math.floor(rand() * P.BLOCKS), k = Math.floor(rand() * P.L * P.W);
+    if (S.stacks[b][k].length >= 3) continue;
+    const id = mk(rand() < 0.3 ? 20 : 40, {});
+    S.stacks[b][k].push(id); S.used[b]++;
+  }
+  // vessels: discharge groups (40, 20 or twin) and load groups taken from the top of yard stacks
+  let w = 0;
+  const wid = () => 'WI' + String(++w).padStart(4, '0');
+  for (let q = 1; q <= P.QC; q++) {
+    const qc = 'QC' + pad(q), vessel = q <= 4 ? 'V1' : 'V2';
+    for (let i = 0; i < (opts.disch ?? 20); i++) {
+      const r = rand(), units = r < 0.25 ? [mk(20, {}), mk(20, {})] : [mk(r < 0.4 ? 20 : 40, {})];
+      units.forEach(id => S.units[id].onVessel = vessel);
+      S.cmds.push(newCmd(wid(), 'DISCHARGE', qc, opts.block || 1 + Math.floor(rand() * P.BLOCKS), units));
+    }
+    for (let i = 0; i < (opts.load ?? 12); i++) {
+      // take a box from the top of a random stack, not already in a command
+      for (let t = 0; t < 50; t++) {
+        const b = opts.block || 1 + Math.floor(rand() * P.BLOCKS), st = S.stacks[b], k = Math.floor(rand() * st.length);
+        const top = st[k][st[k].length - 1];
+        if (!top || S.cmds.some(c => c.units.includes(top))) continue;
+        S.cmds.push(newCmd(wid(), 'LOAD', qc, b, [top], k)); S.hold[b].add(k); break;
+      }
+    }
+  }
+}
+function newCmd(id, kind, qc, block, units, fromStack) {
+  return { id, kind, qc, block, units, fromStack, st: 0, stages: kind === 'DISCHARGE' ? ['QC', 'SP', 'ASC'] : ['ASC', 'SP', 'QC'],
+           lane: null, laneQc: null, laneBy: null, zone: null, mach: null, status: 'QUEUED', why: '', rejectedBy: [new Set(), new Set(), new Set()],
+           returns: 0, lifts: 0, lastProgress: 0, history: [] };
+}
+const eq = id => S.eq.find(e => e.id === id);
+const log = t => { S.log.push(`${S.cycles}: ${t}`); if (S.log.length > 400) S.log.shift(); };
+function assign(sp, qc) {
+  if (sp.qc) S.crew[sp.qc] = S.crew[sp.qc].filter(x => x !== sp.id);
+  if (qc && S.crew[qc].length >= 3) return 'max 3';
+  sp.qc = qc; if (qc) S.crew[qc].push(sp.id); return 'ok';
+}
+// ---------- which machine may do the stage a command is on ----------
+function candidates(c) {
+  const t = c.stages[c.st];
+  if (t === 'QC') { const v = eq(c.qc).vessel; return S.eq.filter(e => e.type === 'QC' && e.vessel === v && (c.kind === 'LOAD' ? e.id === c.laneQc : true)); }
+  if (t === 'SP') { const qc = c.kind === 'DISCHARGE' ? c.laneQc : c.qc; return S.crew[qc].map(eq); }
+  return S.eq.filter(e => e.type === 'ASC' && e.block === c.block && e.side === 'W'); // water side only works the water-side TP
+}
+const usable = e => !['WORKSHOP', 'STUCK', 'HATCH'].includes(e.status);
+// ---------- a stage has two halves: reserve (when the machine takes the command) and exec (next cycle) ----------
+// reserve books the place the box will go to, so a machine never drives to a full place. Returns '' or why it can't
+function freeIdx(arr) { return arr.findIndex(x => x === null); }
+function reserve(c, m) {
+  const t = c.stages[c.st];
+  if (c.kind === 'DISCHARGE') {
+    if (t === 'QC') {
+      if (!S.crew[m.id].length) return 'no sprinter assigned';
+      const i = freeIdx(S.lanes[m.id]); if (i < 0) return 'all 4 lanes occupied';
+      S.lanes[m.id][i] = { res: c.id }; c.lane = i; c.laneQc = m.id; return '';
+    }
+    if (t === 'SP') {
+      const z = freeIdx(S.tpW[c.block]); if (z < 0) return `block ${pad(c.block)}, water-side TP: all 8 zones occupied`;
+      S.tpW[c.block][z] = { res: c.id }; c.zone = z; return '';
+    }
+    return '';
+  }
+  if (t === 'ASC') {
+    if (c.lifts > 0) return ''; // second lift of a twin: the zone is already this command's
+    const z = freeIdx(S.tpW[c.block]); if (z < 0) return `block ${pad(c.block)}, water-side TP: all 8 zones occupied`;
+    if (S.reserveLane) { const i = freeIdx(S.lanes[c.qc]); if (i < 0) return `${c.qc}: no free lane to book`; S.lanes[c.qc][i] = { res: c.id }; c.lane = i; c.laneBy = 0; }
+    S.tpW[c.block][z] = { res: c.id, units: [] }; c.zone = z; return '';
+  }
+  if (t === 'SP') {
+    if (c.lane !== null) return '';
+    const i = freeIdx(S.lanes[c.qc]); if (i < 0) return `${c.qc}: all 4 lanes occupied`;
+    S.lanes[c.qc][i] = { res: c.id }; c.lane = i; c.laneBy = 1; return '';
+  }
+  return '';
+}
+// undo what the stage booked, when the command is rejected before the move
+function release(c) {
+  const t = c.stages[c.st];
+  if (c.kind === 'DISCHARGE') {
+    if (t === 'QC') { S.lanes[c.laneQc][c.lane] = null; c.lane = null; c.laneQc = null; }
+    if (t === 'SP') { S.tpW[c.block][c.zone] = null; c.zone = null; }
+    return;
+  }
+  if (t === 'ASC' && c.lifts === 0) { S.tpW[c.block][c.zone] = null; c.zone = null; if (c.laneBy === 0) { S.lanes[c.qc][c.lane] = null; c.lane = null; } }
+  if (t === 'SP' && c.laneBy === 1) { S.lanes[c.qc][c.lane] = null; c.lane = null; }
+}
+// the move itself. Returns true when the stage is finished (a twin in the yard crane takes two lifts)
+function exec(c, m) {
+  const t = c.stages[c.st];
+  if (c.kind === 'DISCHARGE') {
+    if (t === 'QC') { put(S.lanes[c.laneQc], c.lane, { units: c.units, cmd: c.id }, c.id); c.units.forEach(id => delete S.units[id].onVessel); return true; }
+    if (t === 'SP') { put(S.tpW[c.block], c.zone, { units: c.units.slice(), cmd: c.id }, c.id); S.lanes[c.laneQc][c.lane] = null; return true; }
+    const zone = S.tpW[c.block][c.zone], id = zone.units.shift(), k = planSlot(c.block); // a twin leaves the zone one box a lift
+    S.stacks[c.block][k].push(id); S.used[c.block]++; c.lifts++;
+    if (zone.units.length) return false;
+    S.tpW[c.block][c.zone] = null; return true;
+  }
+  if (t === 'ASC') {
+    const st = S.stacks[c.block][c.fromStack], id = c.units[c.lifts];
+    if (st[st.length - 1] !== id) throw new Error(`${c.id}: ${id} is not on top`);
+    st.pop(); S.used[c.block]--; S.tpW[c.block][c.zone].units.push(id); c.lifts++;
+    if (c.lifts < c.units.length) return false;
+    S.tpW[c.block][c.zone] = { units: c.units, cmd: c.id }; S.hold[c.block].delete(c.fromStack); return true;
+  }
+  if (t === 'SP') { put(S.lanes[c.qc], c.lane, { units: c.units, cmd: c.id }, c.id); S.tpW[c.block][c.zone] = null; c.laneQc = c.qc; return true; }
+  S.lanes[c.laneQc][c.lane] = null; c.units.forEach(id => S.units[id].loaded = true); return true;
+}
+// a sprinter or crane only places at ground level: the place must be empty, or booked by this command and still empty
+function put(arr, i, v, resId) {
+  const x = arr[i];
+  if (x && !(x.res === resId && !(x.units && x.units.length))) throw new Error('box placed on a box at ' + i);
+  arr[i] = v;
+}
+// lowest stack in the block, under 6 high. Reefer rows (20-24) are skipped for normal boxes
+function planSlot(b) {
+  const st = S.stacks[b]; let best = -1, bh = 99;
+  for (let k = 0; k < st.length; k++) {
+    const bay = Math.floor(k / P.W) + 1; if (bay >= P.RF_FROM && bay <= P.RF_TO) continue;
+    if (S.hold[b].has(k)) continue;
+    const h = st[k].length; if (h < P.H && h < bh) { bh = h; best = k; if (h === 0) break; }
+  }
+  return best;
+}
+// ---------- one cycle (a quarter hour) ----------
+// first every machine that holds a command makes its move, then every free machine takes the first command it can do
+function cycle() {
+  const t0 = performance.now();
+  S.cycles++; S.clock += 15;
+  let moved = 0;
+  const execOne = m => {
+    if (!m.cmd || !usable(m)) return 0;
+    const c = S.cmds.find(x => x.id === m.cmd);
+    const done = exec(c, m);
+    m.moves++; S.moves++; c.lastProgress = S.cycles; c.history.push(`${c.stages[c.st]}:${m.id}`);
+    if (done) { c.st++; c.lifts = 0; c.mach = null; m.cmd = null; c.status = c.st === 3 ? 'DONE' : 'QUEUED'; if (c.st === 3) log(`${c.id} complete`); }
+    return 1;
+  };
+  const assignOne = m => {
+    const type = m.type;
+    if (!usable(m)) { m.why = m.status; return; }
+    if (m.cmd) { m.status = 'BUSY'; m.why = ''; return; }
+    if (type === 'SP' && !m.qc) { m.status = 'IDLE'; m.why = 'not assigned to a quay crane'; return; }
+    let why = '';
+    const mine = S.cmds.filter(c => c.lastMach === m.id); // a command it just gave back comes first
+    for (const c of mine.length ? mine.concat(S.cmds) : S.cmds) {
+      if (c.status !== 'QUEUED' || c.stages[c.st] !== type || c.rejectedBy[c.st].has(m.id) || !candidates(c).includes(m)) continue;
+      // after "Reject command" alone the command goes back to the machine that had it, if that machine is free: the "it comes back" behaviour
+      if (c.lastMach && c.lastMach !== m.id) { const lm = eq(c.lastMach); if (usable(lm) && !lm.cmd && !c.rejectedBy[c.st].has(lm.id)) continue; }
+      // a quay crane takes its own discharge; another crane of the vessel only after its own crane rejected it or can't work
+      if (type === 'QC' && c.kind === 'DISCHARGE' && c.qc !== m.id && usable(eq(c.qc)) && !c.rejectedBy[0].has(c.qc)) continue;
+      const r = reserve(c, m);
+      if (r) { if (!why) why = r; c.why = r; continue; }
+      c.mach = m.id; c.lastMach = null; c.status = 'ACTIVE'; c.why = ''; m.cmd = c.id; m.waitNew = false; break;
+    }
+    if (m.cmd) { m.status = 'BUSY'; m.why = ''; }
+    else { m.status = 'IDLE'; m.why = m.waitNew ? 'waiting for a new command' : why || 'no work'; }
+  };
+  for (const m of S.eq) moved += execOne(m);
+  for (const type of ['ASC', 'SP', 'QC']) for (const m of S.eq) if (m.type === type) assignOne(m);
+  // the quay cranes' extra lifts in the same quarter hour
+  const qcs = S.eq.filter(m => m.type === 'QC');
+  for (let k = 1; k < P.QC_MOVES; k++) for (const m of qcs) { moved += execOne(m); assignOne(m); }
+  for (const m of qcs) if (!m.cmd && usable(m) && S.cmds.some(c => c.status !== 'DONE' && c.qc === m.id)) m.waited++;
+  if (moved) S.lastMoveCycle = S.cycles;
+  // a command whose stage no machine can ever take waits with a reason, it does not vanish
+  for (const c of S.cmds) if (c.status === 'QUEUED') {
+    const left = candidates(c).filter(e => !c.rejectedBy[c.st].has(e.id));
+    if (!left.length) c.why = `rejected by ${[...c.rejectedBy[c.st]].join(', ')}, no other ${c.stages[c.st]} can do this stage - waiting`;
+  }
+  S.lastCycleMs = performance.now() - t0;
+  return moved;
+}
+// ---------- reject rules ----------
+function rejectCommand(cid, alsoMachine) {
+  const c = S.cmds.find(x => x.id === cid); if (!c || !c.mach) return 'not on a machine';
+  const m = eq(c.mach);
+  // a half-done twin lift or a load whose zone is already taken stays where it is: only the stage owner changes
+  if (alsoMachine) { c.rejectedBy[c.st].add(m.id); m.waitNew = true; }
+  c.lastMach = alsoMachine ? null : m.id;
+  release(c); c.returns++; c.mach = null; c.status = 'QUEUED'; m.cmd = null; m.status = 'IDLE';
+  log(`${c.id} rejected by ${m.id}${alsoMachine ? ' (machine rejected too)' : ''}`);
+  return 'ok';
+}
+function rejectMachineOnly(mid) {
+  const m = eq(mid);
+  if (m.cmd) { S.warnings.push(`${mid}: the machine has an open command (${m.cmd}). Reject the command too`); return 'warning'; }
+  m.waitNew = true; return 'ok';
+}
+// manual Redeck: the controller moves the box himself and closes a stage that no machine will take
+function manualFinish(cid) {
+  const c = S.cmds.find(x => x.id === cid);
+  if (!c || c.mach || c.status !== 'QUEUED') return 'not a waiting stage';
+  const t = c.stages[c.st], next = () => { c.history.push(`${t}:manual`); c.st++; c.lifts = 0; c.status = c.st === 3 ? 'DONE' : 'QUEUED'; c.why = ''; return 'ok'; };
+  if (c.kind === 'DISCHARGE' && t === 'ASC') {
+    const zone = S.tpW[c.block][c.zone];
+    for (const id of zone.units) { const k = planSlot(c.block); S.stacks[c.block][k].push(id); S.used[c.block]++; }
+    S.tpW[c.block][c.zone] = null; return next();
+  }
+  if (c.kind === 'LOAD' && t === 'ASC') {
+    if (c.zone === null) { const r = reserve(c, { id: 'manual' }); if (r) return r; }
+    const st = S.stacks[c.block][c.fromStack];
+    for (const id of c.units.slice(c.lifts)) { if (st[st.length - 1] !== id) return 'box is not on top'; st.pop(); S.used[c.block]--; }
+    S.tpW[c.block][c.zone] = { units: c.units.slice(), cmd: c.id }; S.hold[c.block].delete(c.fromStack); return next();
+  }
+  if (c.kind === 'LOAD' && t === 'QC') { S.lanes[c.laneQc][c.lane] = null; c.units.forEach(id => S.units[id].loaded = true); return next(); }
+  return 'a sprinter or quay crane stage goes to another machine, no hand move needed';
+}
+// ---------- invariant check: every box in exactly one place, no box in two open commands ----------
+function check() {
+  const where = new Map(), errs = [];
+  const at = (id, p) => { if (where.has(id)) errs.push(`${id} in two places: ${where.get(id)} and ${p}`); where.set(id, p); };
+  for (const u of Object.values(S.units)) { if (u.onVessel) at(u.id, 'vessel ' + u.onVessel); if (u.loaded) at(u.id, 'loaded'); }
+  for (let b = 1; b <= P.BLOCKS; b++) {
+    S.stacks[b].forEach((st, k) => { if (st.length > P.H) errs.push(`block ${b} stack ${k} is ${st.length} high`); st.forEach(id => at(id, `B${b}/${k}`)); });
+    S.tpW[b].forEach((z, i) => { if (z && z.units) { if (z.units.length > 2) errs.push('zone over capacity'); z.units.forEach(id => at(id, `TP${b}/${i}`)); } });
+  }
+  for (const [qc, lanes] of Object.entries(S.lanes)) lanes.forEach((l, i) => l && l.units && l.units.forEach(id => at(id, `${qc}/lane${i + 1}`)));
+  for (const id of Object.keys(S.units)) if (!where.has(id)) errs.push(`${id} is nowhere`);
+  const open = new Map();
+  for (const c of S.cmds) if (c.status !== 'DONE') c.units.forEach(id => { if (open.has(id)) errs.push(`${id} in ${open.get(id)} and ${c.id}`); open.set(id, c.id); });
+  for (const m of S.eq) if (m.cmd && S.cmds.find(c => c.id === m.cmd).mach !== m.id) errs.push(`${m.id} thinks it has ${m.cmd}`);
+  return errs;
+}
+// ---------- render ----------
+const $ = id => document.getElementById(id);
+let selBlock = 5;
+function render() {
+  const t0 = performance.now();
+  const open = S.cmds.filter(c => c.status !== 'DONE');
+  $('clock').textContent = 'Cycle ' + S.cycles;
+  $('stat').textContent = `${open.length} open commands, last cycle ${(S.lastCycleMs || 0).toFixed(2)} ms`;
+  // canvas: quay, 8 QCs with 4 lanes each, 16 blocks with the gap between 8 and 9, water-side and land-side TP
+  const cv = $('map'), g = cv.getContext('2d');
+  g.fillStyle = '#9cc3e6'; g.fillRect(0, 0, cv.width, 40);
+  g.fillStyle = '#bbb'; g.fillRect(0, 40, 780, 30); g.fillStyle = '#ddd'; g.fillRect(800, 40, 160, 30);
+  g.fillStyle = '#000'; g.font = '11px Tahoma'; g.fillText('Berth A (automated)', 4, 64); g.fillText('Berth B - manual', 806, 64);
+  for (let q = 0; q < P.QC; q++) {
+    const x = 20 + q * 95, id = 'QC' + pad(q + 1), e = eq(id);
+    g.fillStyle = '#333'; g.fillRect(x, 20, 60, 16); g.fillStyle = '#fff'; g.fillText(`${id} ${e.status}`, x + 2, 32);
+    S.lanes[id].forEach((l, i) => { g.fillStyle = l ? (l.units ? '#e8a33d' : '#f3dfb0') : '#eee'; g.fillRect(x + i * 15, 44, 13, 10); });
+  }
+  for (let b = 1; b <= P.BLOCKS; b++) {
+    const x = 10 + (b - 1) * 57 + (b > 8 ? 40 : 0), y = 100;
+    g.fillStyle = '#fff'; g.fillRect(x, y, 48, 280); g.strokeStyle = '#000'; g.strokeRect(x, y, 48, 280);
+    const fill = S.used[b] / (P.W * P.L * P.H);
+    g.fillStyle = P.DG.includes(b) ? '#f2b8b8' : '#b8d6f2'; g.fillRect(x + 1, y + 279 - 278 * fill * 10, 46, 278 * Math.min(1, fill * 10));
+    g.fillStyle = '#000'; g.fillText(pad(b), x + 16, y + 14); g.fillText(String(S.used[b]), x + 10, y + 150);
+    S.tpW[b].forEach((z, i) => { g.fillStyle = z ? '#e8a33d' : '#eee'; g.fillRect(x + (i % 4) * 12, y - 22 + Math.floor(i / 4) * 9, 11, 8); });
+    g.fillStyle = '#eee'; g.fillRect(x, y + 284, 48, 16);
+  }
+  g.fillStyle = '#000'; g.fillText('gap', 470, 250);
+  // text twin of the map (also the phone layout)
+  $('mapText').innerHTML = '<table><tr><th>Block</th><th>Used</th><th>Water TP</th><th>Zone</th></tr>' +
+    Array.from({ length: P.BLOCKS }, (_, i) => i + 1).map(b => (b === 9 ? '<tr><td colspan="4">-- gap --</td></tr>' : '') +
+      `<tr data-b="${b}"><td>${pad(b)}${P.DG.includes(b) ? ' DG' : ''}</td><td>${S.used[b]} / ${P.W * P.L * P.H}</td><td>${S.tpW[b].filter(Boolean).length} / 8</td><td>RF ${P.RF_FROM}-${P.RF_TO}</td></tr>`).join('') + '</table>';
+  // one block: 44 bays with a count each, the two TPs as 4 x 2 grids
+  $('blkId').textContent = pad(selBlock);
+  const st = S.stacks[selBlock];
+  let bays = '';
+  for (let bay = 0; bay < P.L; bay++) { let n = 0; for (let r = 0; r < P.W; r++) n += st[bay * P.W + r].length;
+    bays += `<div class="bay${bay + 1 >= P.RF_FROM && bay + 1 <= P.RF_TO ? ' rf' : ''}" title="Bay ${pad(bay + 1)}: ${n} boxes">${pad(bay + 1)}<br>${n}</div>`; }
+  const tp = arr => '<div class="tp">' + arr.map((z, i) => `<div title="zone ${i + 1}">${i + 1}${z ? ': ' + ((z.units && z.units.length) || 'booked') : ''}</div>`).join('') + '</div>';
+  $('blk').innerHTML = 'Water-side TP' + tp(S.tpW[selBlock]) + `<div class="bays">${bays}</div>Land-side TP` + tp(Array(8).fill(null));
+  $('eq').innerHTML = '<table><tr><th>Machine</th><th>Status</th><th>Command</th><th>Crew / why</th><th>Moves</th></tr>' + S.eq.map(e =>
+    `<tr><td>${e.id}</td><td>${e.status}</td><td>${e.cmd || ''}</td><td>${e.type === 'QC' ? S.crew[e.id].join(' ') + ' ' : ''}${e.type === 'SP' ? (e.qc || '') + ' ' : ''}${e.why}</td><td>${e.moves}</td></tr>`).join('') + '</table>';
+  $('cmds').innerHTML = '<table><tr><th>WI</th><th>Kind</th><th>Stage</th><th>Machine</th><th>Box</th><th>Returns</th><th>Why</th></tr>' + open.map(c =>
+    `<tr><td>${c.id}</td><td>${c.kind}</td><td>${c.st + 1}/3 ${c.stages[c.st]}</td><td>${c.mach || ''}</td><td>${c.units.join('+')}</td><td>${c.returns}</td><td>${c.why}</td></tr>`).join('') + '</table>';
+  S.lastRenderMs = performance.now() - t0;
+}
+$('btnCycle').onclick = () => { cycle(); render(); };
+$('btnRun').onclick = () => { let n = 0; while (S.cmds.some(c => c.status !== 'DONE') && n++ < 500) cycle(); render(); };
+$('mapText').onclick = e => { const tr = e.target.closest('tr[data-b]'); if (tr) { selBlock = +tr.dataset.b; render(); } };
+fresh(); render();
+window.SPIKE = { fresh, cycle, render, check, rejectCommand, rejectMachineOnly, manualFinish, assign, eq, get S() { return S; }, P };
+</script>
+</body>
+</html>
