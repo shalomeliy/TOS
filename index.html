@@ -28,6 +28,10 @@ body{background:#3a6ea5;font:12px Tahoma,"Segoe UI",Verdana,sans-serif;color:var
 #tip{position:fixed;z-index:10;max-width:280px;direction:rtl;text-align:right;background:#ffffe1;color:#000;border:1px solid #000;
   padding:4px 7px;font-size:12px;line-height:1.45;box-shadow:2px 2px 0 #0004;pointer-events:none}
 #tip[hidden]{display:none}
+.lmmap{width:100%;height:62vh;min-height:340px;display:block;background:#d6d3ca;border:1px solid;border-color:var(--shadow) var(--hl) var(--hl) var(--shadow);cursor:grab}
+.lminfo{direction:rtl;text-align:right;background:#ffffe1;padding:4px 8px;border:1px solid #999;margin:4px 0 6px;min-height:2.8em;line-height:1.5}
+.lmscroll{max-height:280px;overflow:auto}.lmlog{max-height:150px;overflow:auto;font-size:11px;direction:rtl;text-align:right}
+.lmbar{gap:4px;margin-bottom:6px}.lmlbl{cursor:help;font-weight:bold}
 .toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px;border-bottom:1px solid var(--shadow);box-shadow:0 1px var(--hl)}
 .sep{width:2px;height:20px;border-left:1px solid var(--shadow);border-right:1px solid var(--hl);margin:0 3px}
 button{font:inherit;background:var(--face);padding:3px 10px;cursor:pointer;color:#000;
@@ -211,11 +215,11 @@ const BLOCKS = [
   { id: 'C', use: ['IMPORT'], bays: 6, rows: 2 },
   { id: 'D', use: ['IMPORT', 'EMPTY'], bays: 6, rows: 2 },
 ];
-// Ashdod South Port (HCT) scaled down x4: real 800 m / 445 m quays, 8 quay cranes, 30 ASCs (docs/research/ashdod-south-port.md)
-const QUAYS = [{ id: '27', len: 200, real: 800 }, { id: '28', len: 111, real: 445 }];
+// a training port scaled down x4 from the full-size terminal (masked numbers): automated berth A 780 m, manual berth B 420 m
+const QUAYS = [{ id: 'A', len: 200, real: 780 }, { id: 'B', len: 111, real: 420 }];
 // shown top right; bump on every push: <roadmap version>.<fix number inside it>
-const APP_VERSION = 'v11.1', APP_DATE = '31-10-2026';
-const STATE_VER = 11;                            // bump when the saved shape changes, and add a MIGRATE step
+const APP_VERSION = 'v12.0', APP_DATE = '17-11-2026';
+const STATE_VER = 12;                            // bump when the saved shape changes, and add a MIGRATE step
 // truck appointments: one-hour slots; a truck is on time from APPT_GRACE minutes before its hour to APPT_GRACE after it ends
 // holds (version 10): every hold type belongs to one authority, and only that role may put it on or take it off.
 // Any hold stops a box leaving the terminal inland (gate out, train). u.holds keeps the type codes; S.holdLog keeps who, when and why
@@ -251,7 +255,7 @@ const segNeed = (a, b) => a && b ? SEG_PAIRS[[a, b].sort().join('|')] || 0 : 0;
 const stackDist = (a, b) => { const [ba, xa, ya] = a.split('-'), [bb, xb, yb] = b.split('-');
   return ba !== bb ? 99 : Math.max(Math.abs(xa - xb), Math.abs(ya - yb)); };
 const APPT_GRACE = 30, APPT_KINDS = { 'RECEIVE EXPORT': 'Bring an export', 'RECEIVE EMPTY': 'Return an empty', DELIVER: 'Pick up an import' };
-// each line sails a fixed route: the 3 ports after Ashdod (UN/LOCODE). POD 1 = first stop, 3 = last stop
+// each line sails a fixed route: the 3 ports after this one (UN/LOCODE). POD 1 = first stop, 3 = last stop
 const ROUTES = { BLU: ['GRPIR', 'ITGOA', 'ESVLC'], RED: ['TRMER', 'GRPIR', 'NLRTM'], GRN: ['EGPSD', 'ITGOA', 'GBFXT'] };
 const PORTS = { GRPIR: 'Piraeus', ITGOA: 'Genoa', ESVLC: 'Valencia', TRMER: 'Mersin', NLRTM: 'Rotterdam', EGPSD: 'Port Said', GBFXT: 'Felixstowe' };
 // one ship layout for every vessel: 20' bays 01 and 03, 40' bay 06; 4 rows; tiers 02, 04 in the hold, 82, 84 on deck
@@ -261,7 +265,7 @@ const LINES = { BLU: 'Blue Ocean Lines', RED: 'Red Anchor Shipping', GRN: 'Green
 const OWNER = { BLU: 'BOLU', RED: 'RASU', GRN: 'GWCU' };
 const ISO = { '22G1': "20' dry", '45G1': "40' high cube", '22R1': "20' reefer", '45R1': "40' high cube reefer" };
 const PAGES = [
-  ['Terminal', [['overview', 'Overview']]],
+  ['Terminal', [['live', 'Live Map'], ['overview', 'Overview']]],
   ['Vessel', [['vessels', 'Vessel Visits'], ['berth', 'Berth Schedule'], ['stowage', 'Stowage Plan']]],
   ['Yard', [['yard', 'Yard View'], ['yardrules', 'Yard Rules'], ['inventory', 'Unit Inventory'], ['holds', 'Holds & Permissions'], ['reefer', 'Reefers & Hazardous'], ['inspector', 'Unit Inspector']]],
   ['Gate', [['gate', 'Gate Transactions'], ['appts', 'Truck Appointments']]],
@@ -272,6 +276,7 @@ const PAGES = [
 ];
 // Hebrew tooltips for every clickable thing, keyed by data-act (nav links by page id)
 const PAGE_TIPS = {
+  live: 'המפה החיה: כל המסוף מלמעלה, וכל מכונה וכל מכולה זזות בזמן אמת. כאן רואים DISCHARGE ו-LOAD מתחילים ועוברים ממכונה למכונה.',
   overview: 'מסך הסיכום: כמה מכולות יש, כמה עבודה פתוחה, וכמה כסף נכנס.',
   vessels: 'רשימת האוניות: יצירת אונייה חדשה, הגעה לרציף, התחלת עבודה ויציאה.',
   berth: 'לוח הרציפים: איזו אונייה עוגנת באיזה רציף ומתי, וכמה עגורני רציף כל אונייה מקבלת.',
@@ -293,10 +298,11 @@ const PAGE_TIPS = {
 };
 // per-screen tooltip on the screen title: what you see here, and what you can do here
 const SCREEN_TIPS = {
+  live: 'מה רואים: מפה של כל המסוף מלמעלה: הים והאוניות, רציף A עם 8 עגורני רציף ו-4 נתיבים מתחת לכל אחד, רציף B הידני, הכביש של הספרינטרים, 16 בלוקים עם TP בכל צד, ובכל בלוק עגורן חצר בצד הים ועגורן בצד היבשה. כל מלבן צבעוני הוא מכולה, והוא זז בזמן אמת: מהאונייה לנתיב, על ספרינטר ל-TP, ועל עגורן החצר לערימה (ולהפך בהעמסה). מתחת: המספרים של המסוף, כל המכונות ומה כל אחת עושה, והפקודות הפתוחות. מה אפשר לעשות: לשנות מהירות או לעצור, לעשות זום ולגרור, ללחוץ על מכונה או מכולה ולעקוב אחריה, להביא אוניות חדשות ולהתחיל מסוף חדש.',
   reefer: 'מה רואים: כמה שקעי חשמל יש בכל בלוק וכמה תפוסים, כל מכולות הקירור בחצר עם הטמפרטורה שלהן, כל המכולות עם מטען מסוכן, ואזהרות על מכולות שעומדות קרוב מדי. מה אפשר לעשות: לכבות או להדליק את שני החוקים כדי לראות מה קורה בלעדיהם, ולשלוח מכולה בעייתית למקום תקין בכפתור Move.',
   overview: 'מה רואים: מפה של הנמל (ים, שני רציפים, עגורנים, 4 בלוקים ומסילת רכבת) וסיכום של כל הנמל: כמה מכולות בחצר, כמה אוניות ברציף, כמה עבודה פתוחה וכמה כסף. מה אפשר לעשות: רק להסתכל. הפעולות עצמן נעשות במסכים האחרים.',
   vessels: 'מה רואים: כל האוניות, ליד איזה רציף כל אחת, באיזה שלב היא (בדרך, ברציף, בעבודה, סיימה, יצאה), וכמה מקומות בתוכנית ההעמסה כבר מלאים. מה אפשר לעשות: ליצור אונייה חדשה ולבחור לה רציף, להביא אותה לרציף, להתחיל עבודה, לפתוח את תוכנית ההעמסה ולשלוח אותה לדרך.',
-  berth: 'מה רואים: ציר זמן של יומיים לכל רציף (27 ו-28). כל פס הוא אונייה: מתי היא מגיעה ועד מתי היא תתפוס את הרציף. מקווקו = עוד בדרך (תכנון), מלא = כבר ליד הרציף, אדום עם ! = שתי אוניות רוצות את אותו רציף באותו זמן. שבת מסומנת בפסים סגולים, והקו האדום הוא עכשיו. מתחת: טבלת האוניות וטבלת עגורני הרציף. מה אפשר לעשות: לבחור לכל אונייה 1 או 2 עגורני רציף, להעביר אונייה שעוד בדרך לרציף השני, להקדים או לדחות את ההגעה שלה בשעה, ולהעביר עגורן רציף מאונייה לאונייה.',
+  berth: 'מה רואים: ציר זמן של יומיים לכל רציף (A ו-B). כל פס הוא אונייה: מתי היא מגיעה ועד מתי היא תתפוס את הרציף. מקווקו = עוד בדרך (תכנון), מלא = כבר ליד הרציף, אדום עם ! = שתי אוניות רוצות את אותו רציף באותו זמן. שבת מסומנת בפסים סגולים, והקו האדום הוא עכשיו. מתחת: טבלת האוניות וטבלת עגורני הרציף. מה אפשר לעשות: לבחור לכל אונייה 1 או 2 עגורני רציף, להעביר אונייה שעוד בדרך לרציף השני, להקדים או לדחות את ההגעה שלה בשעה, ולהעביר עגורן רציף מאונייה לאונייה.',
   stowage: 'מה רואים: חתך של האונייה, bay אחד בכל פעם: שורות לרוחב, קומות לגובה, קו עבה בין הבטן (למטה) לסיפון (למעלה). מקום עם קו מקווקו = מתוכנן, מלא = כבר על האונייה, אדום עם ! = אזהרה. מה אפשר לעשות: לבחור אונייה ו-bay, להחליף צבע לפי נמל יעד או לפי משקל, וללחוץ על מקום כדי לקרוא למה המכולה שם. תרגול: באונייה שעוד לא התחילו לעבוד עליה לוחצים Plan it myself, בוחרים מכולה מהרשימה ולוחצים על מקום. המערכת חוסמת מה שבלתי אפשרי ומסמנת ב-! טעות תכנון, ובסוף אפשר להשוות לתוכנית של המחשב.',
   yard: 'מה רואים: מפת החצר, בלוק אחרי בלוק, וכל ערימה של מכולות לפי צבע הסוג. מה אפשר לעשות: ללחוץ על ערימה ולראות אילו מכולות בתוכה, מלמעלה למטה.',
   yardrules: 'מה רואים: רשימת חוקי החצר לפי סדר חשיבות (העליון הכי חשוב), כל חוק דולק (ON) או כבוי (OFF), ועל איזה סוג מכולות הוא חל. מתחת: איך מסדרים יבוא וריקות, טבלת ניסוי שמשווה את החוקים שלך לבלי חוקים ולכל החוקים (כמה הזזות מיותרות וכמה ערימות נתפסו), וכמה הזזות מיותרות היו בחצר האמיתית מאז ששינית חוקים. מה אפשר לעשות: להדליק ולכבות חוק, להזיז חוק למעלה או למטה בסדר החשיבות, לבחור לפזר נמוך או לערום גבוה, ולחזור לחוקים הרגילים.',
@@ -314,6 +320,11 @@ const SCREEN_TIPS = {
 };
 const TIPS = {
   nav: el => PAGE_TIPS[el.dataset.id],
+  lmSpeed: el => el.dataset.id === '0' ? 'עוצר את השעון של המסוף החי. כל המכונות והמכולות קופאות במקום, ואפשר להסתכל בנחת וללחוץ עליהן.' : `השעון של המסוף החי רץ פי ${el.dataset.id} מהזמן האמיתי.` + (el.dataset.id === '1' ? ' כמו במסוף אמיתי: הרמה של עגורן רציף לוקחת בערך דקה וחצי.' : el.dataset.id === '60' ? ' דקה של מסוף בכל שנייה: טוב כדי לראות אונייה שלמה נפרקת.' : ''),
+  lmZoom: el => ({ in: 'מגדיל את המפה (זום פנימה). גם גלגלת העכבר עושה את זה.', out: 'מקטין את המפה (זום החוצה).', quay: 'חוזר לתצוגה של הרציף, הנתיבים, הכביש והחלק של הבלוקים שקרוב לים.', all: 'מראה את כל המסוף: שני הרציפים, 16 הבלוקים עד הכביש של המשאיות.' }[el.dataset.id]),
+  lmFollow: 'כשמסומן, המפה זזה יחד עם המכונה או המכולה שבחרת.',
+  lmNewShips: el => el.disabled ? 'אפשר להביא אוניות חדשות רק כששתי האוניות שברציף סיימו את כל הפריקה וההעמסה (אין פקודות פתוחות). רוצה להתחיל מהר? לחץ x60.' : 'שתי האוניות יוצאות עם המכולות שהועמסו עליהן, ושתי אוניות חדשות מגיעות לרציף A עם מכולות יבוא, ומכולות ייצוא חדשות מחכות להן בחצר.',
+  lmReset: 'מתחיל מסוף חי חדש מההתחלה: אוניות חדשות, חצר חדשה, כל המכונות במקום ההתחלה. החצר הקטנה ושאר המסכים לא משתנים.',
   cycle: 'מקדם את השעון ברבע שעה. ציוד שסיים משימה מתפנה, ומשימות שמחכות נשלחות לציוד פנוי.',
   auto: 'מריץ סבבים לבד, אחד בכל פחות משנייה. לחיצה נוספת עוצרת.',
   day: 'קופץ יום שלם קדימה. טוב כדי לראות איך דמי האחסנה גדלים.',
@@ -382,7 +393,7 @@ const TIPS = {
 };
 
 let S;                                    // simulation state (saved)
-const UI = { page: 'overview', stack: null, msg: null, unit: null };
+const UI = { page: 'live', stack: null, msg: null, unit: null };
 let autoTimer = null;
 // viewer preferences live apart from the simulation, so Reset demo keeps them
 const PREFS_KEY = 'tos-trainer-prefs';
@@ -418,7 +429,7 @@ const weekday = m => DAYS[((dayIndex(m) % 7) + 7) % 7];
 const timeOfDay = m => (((m + 360) % 1440) + 1440) % 1440;           // minutes since midnight
 // no work from Friday 15:00 until Saturday (Motzei Shabbat) 20:00
 const isWorkTime = m => { const d = weekday(m), t = timeOfDay(m); return !((d === 'Fri' && t >= 900) || (d === 'Sat' && t < 1200)); };
-// gate (official HCT hours): Sun-Thu 05:00-24:00, Fri 05:00-14:45, Sat closed
+// gate (training port hours): Sun-Thu 05:00-24:00, Fri 05:00-14:45, Sat closed
 const isGateOpen = m => { const d = weekday(m), t = timeOfDay(m); return d !== 'Sat' && t >= 300 && (d !== 'Fri' || t <= 885); };
 function nextGateOpen(m) { let x = m; for (let i = 0; i < 7 * 96 && !isGateOpen(x); i++) x += CYCLE_MIN; return x; }
 // storage: every calendar day the box was in the yard for any part of it, Saturday not counted
@@ -551,7 +562,7 @@ function lateSlot(v, u) {
 function slotReason(v, k) {
   const u = unitAt(v, k);
   if (!u) return 'מקום ריק.';
-  if (u.category === 'IMPORT') return `מכולת יבוא שהגיעה על האונייה. היא יורדת כאן באשדוד. בפריקה מורידים קודם את הקומה העליונה, כי אי אפשר להרים מכולה שיש עליה מכולה אחרת.`;
+  if (u.category === 'IMPORT') return `מכולת יבוא שהגיעה על האונייה. היא יורדת כאן בנמל. בפריקה מורידים קודם את הקומה העליונה, כי אי אפשר להרים מכולה שיש עליה מכולה אחרת.`;
   const stop = { 1: 'הנמל הראשון במסלול, לכן היא למעלה: יורידו אותה ראשונה.', 2: 'נמל באמצע המסלול, לכן באמצע.', 3: 'הנמל האחרון במסלול, לכן היא למטה: אף אחד לא יצטרך להזיז אותה בנמלים שלפני כן.' }[u.pod];
   const bay = slotParts(k).bay;
   let t = `מכולה של ${sizeOf(u)} רגל, ולכן היא ב-bay ${bay}: ${sizeOf(u) === '40' ? 'ה-bay היחיד לאונייה הזאת שמיועד למכולות של 40 רגל' : 'אחד משני ה-bays למכולות של 20 רגל'}. נוסעת ל-${podCode(v, u.pod)} (${PORTS[podCode(v, u.pod)]}). ${stop} משקל ${u.weight} טון: בין מכולות לאותו נמל, הכבדות למטה כדי שהאונייה תהיה יציבה.`;
@@ -666,8 +677,8 @@ function fresh() {
   S.eq.push(newRMG());
 
   // seed: an earlier vessel left imports in the yard, some under customs hold
-  const v1 = addVisit('MV Training Star', 'BLU', 60, 8, '27', 2);
-  const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6, '28', 1);
+  const v1 = addVisit('MV Training Star', 'BLU', 60, 8, 'A', 2);
+  const v2 = addVisit('MV Harbor Lesson', 'RED', 1440, 6, 'B', 1);
   // dangerous goods on the first vessel (version 11): a flammable liquid and an oxidizer, which must be kept apart in the yard
   Object.values(S.units).filter(u => u.visit === v1.id).forEach((u, i) => { u.dg = { 1: '3', 5: '5.1' }[i] || null; });
   for (let i = 0; i < 6; i++) {
@@ -712,10 +723,10 @@ function addUnit(p) {
 }
 // two ASCs share each block; both have the block's type, so dispatch takes whichever is free
 const newASC = (block, n) => ({ id: `ASC-${block}${n}`, type: 'ASC-' + block, desc: `Automated stacking crane ${n}, block ${block}`, status: 'IDLE', wi: null, moves: 0 });
-// one rail-mounted gantry crane over the siding lifts boxes between the railcars and the yard (the real machine at Ashdod is not known)
+// one rail-mounted gantry crane over the siding lifts boxes between the railcars and the yard (the real machine is not known)
 const newRMG = () => ({ id: 'RMG01', type: 'RMG', desc: 'Rail crane over the siding (rail-mounted gantry)', status: 'IDLE', wi: null, moves: 0 });
 function addVisit(vessel, line, etaIn, imports, quay, cranes) {
-  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, quay: quay || '27', cranes: cranes || 1, wait: null, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null,
+  const v = { id: 'V' + String(++S.seq.visit).padStart(3, '0'), vessel, line, quay: quay || 'A', cranes: cranes || 1, wait: null, eta: S.clock + etaIn, phase: 'INBOUND', ata: null, atd: null,
     plan: null, onboard: {} };
   S.visits.push(v);
   for (let i = 0; i < imports; i++) {
@@ -738,6 +749,9 @@ function load() {
 }
 // one step per saved version; each step brings a save up by one version
 const MIGRATE = {
+  11(s) {   // version 11 -> 12: the quays got made-up names (the public site shows no real port numbers)
+    s.visits.forEach(v => { v.quay = { 27: 'A', 28: 'B' }[v.quay] || v.quay; });
+  },
   10(s) {   // version 10 -> 11: reefers and dangerous goods. Old reefers get a set point at their present temperature; no box was hazardous
     s.specRules = s.specRules || { REEFER: true, DG: true };
     s.dgWarn = s.dgWarn || [];
@@ -772,7 +786,7 @@ const MIGRATE = {
     s.visits.forEach(v => { v.cranes = v.cranes || 1; });
     s.eq.forEach(e => { if (e.type === 'QC') e.vessel = e.vessel || null; });
   },
-  1(s) {   // version 1 -> 2: Ashdod layout (two ASCs per block, quays)
+  1(s) {   // version 1 -> 2: full layout (two ASCs per block, quays)
     const ren = {};
     BLOCKS.forEach(b => { ren['ASC-' + b.id] = `ASC-${b.id}1`; });
     s.eq.forEach(e => { if (ren[e.id]) { e.id = ren[e.id]; e.desc = `Automated stacking crane 1, block ${e.type.slice(4)}`; } });
@@ -1310,6 +1324,700 @@ function trainDepart(t) {
   log('RAIL', `${t.name} departed` + (left ? `, ${left} box(es) left behind in the yard` : ''));
 }
 
+// ---------- version 12: the live map of the full-size training terminal ----------
+// A separate terminal from the small training yard: the full layout (masked numbers, docs/specs/terminal-real-layout.md),
+// on a continuous clock. Every machine runs a list of small motion steps (data, so a save can resume mid-move), and every
+// container is a rectangle that is always somewhere: on a ship, in a lane, in a TP zone, in a stack, or on a machine.
+// World units are metres: x along the quay, y from the sea inland.
+const LIVE_KEY = 'tos-live', LIVE_VER = 1;
+const LT = { BLOCKS: 16, ROWS: 8, BAYS: 44, TIERS: 6, QC: 8, SP: 36, LANES: 4, ZONES: 8, DG: [1, 8, 9, 16], RF_FROM: 20, RF_TO: 24,
+  ROW_M: 2.7, BAY_M: 13, BOX40: 12.2, BOX20: 6, BOX_W: 2.44, TIER_M: 2.9,
+  SHIP_Y: 18, SHIP_ROWS: 16, ROW_SHIP: 2.6, LANE_Y: 79, LANE_DY: 6, ROAD_Y: 128, TPW_Y: 150, BLK_Y: 180, TPL_Y: 760, ROAD2_Y: 800,
+  QC_TOP: 25, ASC_TOP: 20, W_BAYS: 36, WORLD_W: 1060, WORLD_H: 830 };
+const LSPEED = { qcX: 1.5, qcT: 3, qcH: 1.8, sp: 6, ascG: 3.5, ascT: 1.2, ascH: 1, lock: 4 };
+const pad2 = n => String(n).padStart(2, '0');
+const blockX = b => 70 + (b - 1) * 42 + (b > 8 ? 50 : 0);
+const slotXY = (b, bay, row) => ({ x: blockX(b) + row * LT.ROW_M + LT.ROW_M / 2, y: LT.BLK_Y + bay * LT.BAY_M + LT.BAY_M / 2 });
+// TP: 4 columns across the block x 2 rows; zones 1-4 are the row nearest the road
+const zoneXY = (b, side, z) => ({ x: blockX(b) + (z % 4) * 5.4 + 2.7, y: (side === 'W' ? LT.TPW_Y : LT.TPL_Y) + Math.floor(z / 4) * 14 + 7 });
+const isRfBay = bay => bay + 1 >= LT.RF_FROM && bay + 1 <= LT.RF_TO;
+let L = null;                 // the live terminal
+const LV = { scale: 0, ox: 0, oy: 0, sel: null, last: 0, panelAt: 0, drag: null, follow: false };
+function lrand() { L.rng = (L.rng * 1103515245 + 12345) % 2147483648; return L.rng / 2147483648; }
+
+function liveFresh() {
+  L = { ver: LIVE_VER, t: 0, speed: 5, rng: 20261117, seq: { wi: 0, cntr: 500100, ship: 0 }, units: {}, stacks: {}, tp: {}, lanes: {}, slotBook: {},
+    ships: [], cmds: [], mach: [], log: [], stats: { moves: 0, disch: 0, load: 0 } };
+  for (let b = 1; b <= LT.BLOCKS; b++) {
+    L.stacks[b] = Array.from({ length: LT.BAYS * LT.ROWS }, () => []);
+    L.tp[b] = { W: Array.from({ length: LT.ZONES }, () => ({ piece: [], book: null })), L: Array.from({ length: LT.ZONES }, () => ({ piece: [], book: null })) };
+    L.mach.push({ id: `ASC-${pad2(b)}W`, type: 'ASC', side: 'W', block: b, gy: LT.BLK_Y + 2 * LT.BAY_M, tx: blockX(b) + 10.8, tz: LT.ASC_TOP, carry: [], steps: [], wi: null, why: '', moves: 0 });
+    L.mach.push({ id: `ASC-${pad2(b)}L`, type: 'ASC', side: 'L', block: b, gy: LT.BLK_Y + (LT.BAYS - 2) * LT.BAY_M, tx: blockX(b) + 10.8, tz: LT.ASC_TOP, carry: [], steps: [], wi: null,
+      why: 'ממתין למשאיות (משאיות ב-TP של צד היבשה יגיעו בגרסה 12.2)', moves: 0 });
+  }
+  // two ships on berth A; QC01-04 work the first, QC05-08 the second
+  const SHIP_X = [60, 430];
+  for (let q = 0; q < LT.QC; q++) {
+    const k = q % 4, home = SHIP_X[q < 4 ? 0 : 1] + (k * 6 + 3) * LT.BAY_M + LT.BAY_M / 2;
+    L.lanes[`QC${pad2(q + 1)}`] = Array.from({ length: LT.LANES }, () => ({ piece: [], book: null }));
+    L.mach.push({ id: `QC${pad2(q + 1)}`, type: 'QC', ship: q < 4 ? 'S1' : 'S2', bays: [k * 6 + 2, k * 6 + 3, k * 6 + 4], home, x: home, ty: LT.SHIP_Y + 20, tz: LT.QC_TOP, carry: [], steps: [], wi: null, why: '', moves: 0, phase: 'DISCHARGE' });
+  }
+  const s1 = liveShip('MV Training Star', 'BLU', SHIP_X[0], 24), s2 = liveShip('MV Harbor Lesson', 'RED', SHIP_X[1], 24);
+  // 36 sprinters: 2 crewed to every quay crane, the rest parked near the workshop
+  for (let i = 0; i < LT.SP; i++) {
+    const qc = i < 16 ? `QC${pad2(1 + (i % 8))}` : null;
+    const park = { x: 820 + (i % 12) * 9, y: LT.ROAD_Y + 8 + Math.floor(i / 12) * 14 };
+    const at = qc ? { x: qcOf(qc).home + (i < 8 ? -14 : 14), y: LT.ROAD_Y } : park;
+    L.mach.push({ id: `SP${pad2(i + 1)}`, type: 'SP', qc, x: at.x, y: at.y, hd: 0, z: 0, carry: [], steps: [], wi: null, why: qc ? '' : 'לא מצוות לעגורן רציף', moves: 0 });
+  }
+  // the yard already holds some boxes (static background), and the exports for both ships sit near the water side
+  for (let b = 1; b <= LT.BLOCKS; b++) for (let n = 0; n < 18; n++) {
+    const bay = 8 + Math.floor(lrand() * 34), row = Math.floor(lrand() * LT.ROWS);
+    if (bay >= LT.BAYS) continue;
+    const st = L.stacks[b][bay * LT.ROWS + row], size = st.length ? L.units[st[0]].size : (lrand() < 0.4 ? '20' : '40');
+    const h = 1 + Math.floor(lrand() * 3);
+    for (let t = 0; t < h && st.length < 4; t++) { const u = liveUnit({ kind: lrand() < 0.5 ? 'IMP' : 'EXP', size, rf: isRfBay(bay), dg: LT.DG.includes(b) && lrand() < 0.3 }); u.loc = { t: 'stack', b, i: bay * LT.ROWS + row }; st.push(u.id); }
+  }
+  liveExports(s1, [2, 3, 4, 5, 6, 7], 28);
+  liveExports(s2, [10, 11, 12, 13, 14, 15], 28);
+  liveLog('SYSTEM', 'מסוף חדש: שתי אוניות ברציף A, 8 עגורני רציף, 36 ספרינטרים, 32 עגורני חצר');
+}
+const qcOf = id => L.mach.find(m => m.id === id);
+const lmach = id => L.mach.find(m => m.id === id);
+function liveUnit(o) {
+  const owner = { BLU: 'BOLU', RED: 'RASU', GRN: 'GWCU' }[o.line || ['BLU', 'RED', 'GRN'][Math.floor(lrand() * 3)]];
+  const ten = owner + String(++L.seq.cntr).padStart(6, '0');
+  const u = { id: ten + checkDigit(ten), kind: o.kind, size: o.size || '40', rf: !!o.rf, dg: !!o.dg, loc: null, wi: null };
+  L.units[u.id] = u;
+  return u;
+}
+// a ship: bays along x (one 40' footprint each), rows across y, tiers on deck. Imports for its four cranes' bays
+function liveShip(name, line, x0, bays) {
+  const ship = { id: 'S' + (++L.seq.ship), name, line, x0, bays, cells: {} };
+  L.ships.push(ship);
+  for (let k = 0; k < 4; k++) for (const bay of [k * 6 + 2, k * 6 + 3, k * 6 + 4]) for (let row = 2; row < 14; row++) {
+    if (lrand() < 0.6) continue;
+    const cell = ship.cells[`${bay}-${row}`] = [];
+    const tiers = 1 + Math.floor(lrand() * 2);
+    for (let t = 0; t < tiers; t++) {
+      // a 40, or a twin (two 20s lifted together by the quay crane), or a single 20
+      const r = lrand(), rf = lrand() < 0.08, dg = !rf && lrand() < 0.06;
+      const piece = r < 0.2 ? [liveUnit({ kind: 'IMP', size: '20', line }), liveUnit({ kind: 'IMP', size: '20', line })] : [liveUnit({ kind: 'IMP', size: r < 0.3 ? '20' : '40', line, rf, dg })];
+      piece.forEach(u => { u.loc = { t: 'ship', s: ship.id, c: `${bay}-${row}`, k: t }; });
+      cell.push(piece.map(u => u.id));
+      liveCmd('DISCHARGE', `QC${pad2(1 + k + (x0 > 300 ? 4 : 0))}`, piece.map(u => u.id), ship.id);
+    }
+  }
+  return ship;
+}
+function liveExports(ship, blocks, n) {
+  const qcs = L.mach.filter(m => m.type === 'QC' && m.ship === ship.id);
+  for (let i = 0; i < n; i++) {
+    const b = blocks[i % blocks.length], bay = 1 + Math.floor(lrand() * 6), row = Math.floor(lrand() * LT.ROWS), idx = bay * LT.ROWS + row;
+    if (L.stacks[b][idx].length) { i--; continue; }
+    const u = liveUnit({ kind: 'EXP', size: lrand() < 0.25 ? '20' : '40', line: ship.line });
+    u.loc = { t: 'stack', b, i: idx };
+    L.stacks[b][idx].push(u.id);
+    liveCmd('LOAD', qcs[i % qcs.length].id, [u.id], ship.id);
+  }
+}
+function liveCmd(kind, qc, units, ship) {
+  const c = { id: 'WI' + String(++L.seq.wi).padStart(4, '0'), kind, qc, ship, units, st: 0, mach: null, status: 'WAITING', why: '', lane: null, block: null, zone: null, ready: L.t, done: [] };
+  if (kind === 'DISCHARGE') c.block = discBlock(qc, units, L.seq.wi);
+  else c.block = L.units[units[0]].loc.b;
+  units.forEach(id => { L.units[id].wi = c.id; });
+  L.cmds.push(c);
+  return c;
+}
+// imports go to one of the two blocks nearest the crane (alternating, so the water-side yard cranes share the work); DG only to DG blocks
+function discBlock(qc, units, n) {
+  const m = qcOf(qc), dg = units.some(id => L.units[id].dg);
+  const ok = Array.from({ length: LT.BLOCKS }, (_, i) => i + 1).filter(b => dg ? LT.DG.includes(b) : !LT.DG.includes(b));
+  ok.sort((a, b) => Math.abs(blockX(a) + 11 - m.home) - Math.abs(blockX(b) + 11 - m.home));
+  return ok[n % 2];
+}
+function liveLog(area, msg) { L.log.push({ t: L.t, area, msg }); if (L.log.length > 200) L.log.shift(); }
+const lfmt = t => { const m = Math.floor(t / 60); return fmt(m) + ':' + pad2(Math.floor(t % 60)); };
+
+// ---------- where a container is drawn ----------
+const STAGES = { DISCHARGE: ['QC', 'SP', 'ASC'], LOAD: ['ASC', 'SP', 'QC'] };
+const STAGE_HE = { DISCHARGE: ['עגורן רציף: מהאונייה לנתיב', 'ספרינטר: מהנתיב לאזור ב-TP', 'עגורן חצר: מה-TP לערימה'],
+  LOAD: ['עגורן חצר: מהערימה לאזור ב-TP (הכנה)', 'ספרינטר: מאזור ב-TP לנתיב של העגורן', 'עגורן רציף: מהנתיב לאונייה'] };
+function unitPose(u) {
+  const loc = u.loc;
+  if (loc.t === 'on') {
+    const m = lmach(loc.m), k = m.carry.indexOf(u.id), twin = m.carry.length === 2, off = twin ? (k ? 3.1 : -3.1) : 0;
+    if (m.type === 'QC') return { x: m.x + off, y: m.ty, z: m.tz, a: 0 };
+    if (m.type === 'SP') return { x: m.x + Math.cos(m.hd) * off, y: m.y + Math.sin(m.hd) * off, z: 1.6, a: m.hd };
+    return { x: m.tx, y: m.gy, z: m.tz, a: Math.PI / 2 };
+  }
+  if (loc.t === 'ship') {
+    const s = L.ships.find(x => x.id === loc.s), [bay, row] = loc.c.split('-').map(Number), cell = s.cells[loc.c], piece = cell[loc.k], k = piece.indexOf(u.id);
+    return { x: s.x0 + bay * LT.BAY_M + LT.BAY_M / 2 + (piece.length === 2 ? (k ? 3.1 : -3.1) : 0), y: LT.SHIP_Y + row * LT.ROW_SHIP + 1.3, z: 4 + loc.k * 2.6, a: 0 };
+  }
+  if (loc.t === 'lane') {
+    const m = qcOf(loc.q), piece = L.lanes[loc.q][loc.l].piece, k = piece.indexOf(u.id);
+    return { x: m.home + (piece.length === 2 ? (k ? 3.1 : -3.1) : 0), y: LT.LANE_Y + loc.l * LT.LANE_DY, z: 0, a: 0 };
+  }
+  if (loc.t === 'tp') {
+    const p = zoneXY(loc.b, loc.s, loc.z), piece = L.tp[loc.b][loc.s][loc.z].piece, k = piece.indexOf(u.id);
+    return { x: p.x, y: p.y + (piece.length === 2 ? (k ? 3.1 : -3.1) : 0), z: 0, a: Math.PI / 2 };
+  }
+  const bay = Math.floor(loc.i / LT.ROWS), row = loc.i % LT.ROWS, p = slotXY(loc.b, bay, row);
+  return { x: p.x, y: p.y, z: L.stacks[loc.b][loc.i].indexOf(u.id) * LT.TIER_M, a: Math.PI / 2 };
+}
+// take a container out of wherever it is now / put it somewhere
+function locRemove(id) {
+  const u = L.units[id], loc = u.loc;
+  const drop = arr => { const i = arr.indexOf(id); if (i >= 0) arr.splice(i, 1); };
+  if (loc.t === 'ship') { const cell = L.ships.find(x => x.id === loc.s).cells[loc.c], piece = cell[loc.k]; drop(piece); if (!piece.length) cell.splice(loc.k, 1); }
+  else if (loc.t === 'lane') drop(L.lanes[loc.q][loc.l].piece);
+  else if (loc.t === 'tp') drop(L.tp[loc.b][loc.s][loc.z].piece);
+  else if (loc.t === 'stack') drop(L.stacks[loc.b][loc.i]);
+  else if (loc.t === 'on') drop(lmach(loc.m).carry);
+}
+
+// ---------- motion steps ----------
+// a step is plain data: {op:'mv', k, to, v} moves one coordinate at a speed; 'drive' moves a sprinter in a straight line;
+// 'pick' / 'drop' hand containers over; 'wait' locks or unlocks the spreader; 'end' finishes the machine's part of the command
+function runSteps(m, dt) {
+  while (dt > 0 && m.steps.length) {
+    const s = m.steps[0];
+    if (s.op === 'mv') {
+      const d = s.to - m[s.k], need = Math.abs(d) / s.v;
+      if (need <= dt) { m[s.k] = s.to; dt -= need; m.steps.shift(); } else { m[s.k] += Math.sign(d) * s.v * dt; dt = 0; }
+    } else if (s.op === 'drive') {
+      const dx = s.x - m.x, dy = s.y - m.y, dist = Math.hypot(dx, dy);
+      if (dist > 0.01) m.hd = Math.atan2(dy, dx);
+      const need = dist / LSPEED.sp;
+      if (need <= dt) { m.x = s.x; m.y = s.y; dt -= need; m.steps.shift(); } else { m.x += dx / dist * LSPEED.sp * dt; m.y += dy / dist * LSPEED.sp * dt; dt = 0; }
+    } else if (s.op === 'wait') {
+      if (s.d <= dt) { dt -= s.d; m.steps.shift(); } else { s.d -= dt; dt = 0; }
+    } else { m.steps.shift(); stepOp(m, s); }
+  }
+}
+function stepOp(m, s) {
+  if (STEP_OPS[s.op]) return STEP_OPS[s.op](s);
+  const c = L.cmds.find(x => x.id === m.wi);
+  if (s.op === 'pick') s.ids.forEach(id => { locRemove(id); m.carry.push(id); L.units[id].loc = { t: 'on', m: m.id }; });
+  else if (s.op === 'drop') {
+    const ids = m.carry.splice(0, s.n || m.carry.length), to = s.to;
+    ids.forEach(id => {
+      if (to.t === 'ship') {
+        const cell = L.ships.find(x => x.id === to.s).cells[to.c] = L.ships.find(x => x.id === to.s).cells[to.c] || [];
+        if (!ids.indexOf(id)) cell.push([]);
+        cell[cell.length - 1].push(id); L.units[id].loc = { t: 'ship', s: to.s, c: to.c, k: cell.length - 1 };
+      } else if (to.t === 'lane') { const l = L.lanes[to.q][to.l]; l.piece.push(id); l.book = null; L.units[id].loc = { ...to }; }
+      else if (to.t === 'tp') { const z = L.tp[to.b][to.s][to.z]; z.piece.push(id); L.units[id].loc = { ...to }; }
+      else { L.stacks[to.b][to.i].push(id); L.units[id].loc = { t: 'stack', b: to.b, i: to.i }; const k = to.b + '-' + to.i; L.slotBook[k] = Math.max(0, (L.slotBook[k] || 1) - 1); }
+    });
+    m.moves++; L.stats.moves++;
+  } else if (s.op === 'end') {
+    // the machine's part is done: the command moves to the next machine, or is complete
+    m.wi = null; m.why = '';
+    if (!c) return;
+    if (s.unitDone !== undefined) c.done.push(s.unitDone);
+    // one box of a twin is in the stack, the other still waits in the TP: the same yard crane (or the next free one) lifts it next
+    if (s.partial) { c.status = 'WAITING'; c.mach = null; return; }
+    c.st++; c.mach = null; c.ready = L.t; c.why = ''; c.done = [];
+    if (c.st >= 3) {
+      c.status = 'DONE'; c.units.forEach(id => { L.units[id].wi = null; });
+      if (c.kind === 'DISCHARGE') L.stats.disch++; else L.stats.load++;
+      liveLog('WI', `${c.id} ${c.kind} הושלמה: ${c.units.join(' + ')}`);
+    } else c.status = 'WAITING';
+  }
+}
+
+// ---------- who does what next (runs for every idle machine) ----------
+const workTime = () => isWorkTime(Math.floor(L.t / 60));
+function dispatch(m) {
+  if (m.steps.length || m.wi) return;
+  if (!workTime()) { m.why = 'SHABBAT: אין עבודה משישי 15:00 עד מוצאי שבת 20:00'; return; }
+  if (m.type === 'QC') return dispatchQC(m);
+  if (m.type === 'SP') return dispatchSP(m);
+  if (m.type === 'ASC' && m.side === 'W') return dispatchASC(m);
+}
+const open = (kind, f) => L.cmds.filter(c => c.status === 'WAITING' && c.kind === kind && f(c)).sort((a, b) => a.ready - b.ready);
+const freeLane = qc => L.lanes[qc].findIndex(l => !l.piece.length && !l.book);
+const freeZone = b => L.tp[b].W.findIndex(z => !z.piece.length && !z.book);
+function take(c, m, why) { c.status = 'ACTIVE'; c.mach = m.id; m.wi = c.id; m.why = why; }
+
+function dispatchQC(m) {
+  const ship = L.ships.find(s => s.id === m.ship);
+  // DISCHARGE starts here: the top box of a cell in this crane's bays, into a free lane of this crane
+  const disc = open('DISCHARGE', c => c.qc === m.id && c.st === 0).filter(c => { const u = L.units[c.units[0]]; return u.loc.t === 'ship' && ship.cells[u.loc.c].length - 1 === u.loc.k; });
+  const lane = freeLane(m.id);
+  // all 4 lanes full but one holds a box to load: load it first, otherwise crane and sprinters wait for each other forever
+  if (disc.length && lane < 0 && !open('LOAD', c => c.qc === m.id && c.st === 2).length) { m.why = 'כל 4 הנתיבים תפוסים: מחכה שספרינטר יפנה נתיב'; return; }
+  if (disc.length && lane >= 0) {
+    const c = disc[0], u = L.units[c.units[0]], [bay, row] = u.loc.c.split('-').map(Number), z = 4 + u.loc.k * 2.6;
+    take(c, m, `פורק ${c.units.join(' + ')} מהאונייה לנתיב ${lane + 1}`);
+    c.lane = lane; L.lanes[m.id][lane].book = c.id;
+    m.steps = [{ op: 'mv', k: 'tz', to: LT.QC_TOP, v: LSPEED.qcH }, { op: 'mv', k: 'x', to: ship.x0 + bay * LT.BAY_M + LT.BAY_M / 2, v: LSPEED.qcX },
+      { op: 'mv', k: 'ty', to: LT.SHIP_Y + row * LT.ROW_SHIP + 1.3, v: LSPEED.qcT }, { op: 'mv', k: 'tz', to: z, v: LSPEED.qcH }, { op: 'wait', d: LSPEED.lock },
+      { op: 'pick', ids: c.units }, { op: 'mv', k: 'tz', to: LT.QC_TOP, v: LSPEED.qcH }, { op: 'mv', k: 'x', to: m.home, v: LSPEED.qcX },
+      { op: 'mv', k: 'ty', to: LT.LANE_Y + lane * LT.LANE_DY, v: LSPEED.qcT }, { op: 'mv', k: 'tz', to: 0, v: LSPEED.qcH }, { op: 'wait', d: LSPEED.lock },
+      { op: 'drop', to: { t: 'lane', q: m.id, l: lane } }, { op: 'mv', k: 'tz', to: LT.QC_TOP, v: LSPEED.qcH }, { op: 'end' }];
+    return;
+  }
+  if (m.phase === 'DISCHARGE') { m.phase = 'LOAD'; liveLog('QC', `${m.id} סיים לפרוק ועובר להעמסה`); }
+  // the last stage of LOAD: a box that a sprinter put in one of this crane's lanes goes up to the ship
+  const load = open('LOAD', c => c.qc === m.id && c.st === 2);
+  if (!load.length) {
+    const left = L.cmds.filter(c => c.kind === 'LOAD' && c.qc === m.id && c.status !== 'DONE').length;
+    m.why = left ? `מחכה שספרינטר יביא מכולה לנתיב (${left} העמסות נשארו)` : 'סיים את כל העבודה על האונייה'; return;
+  }
+  const c = load[0], laneNo = L.units[c.units[0]].loc.l;
+  // stow on deck: the lowest cell in this crane's bays
+  let best = null;
+  for (const bay of m.bays) for (let row = 2; row < 14; row++) { const h = (ship.cells[`${bay}-${row}`] || []).length; if (h < 3 && (!best || h < best.h)) best = { bay, row, h }; }
+  take(c, m, `מעמיס ${c.units.join(' + ')} מנתיב ${laneNo + 1} לאונייה`);
+  m.steps = [{ op: 'mv', k: 'tz', to: LT.QC_TOP, v: LSPEED.qcH }, { op: 'mv', k: 'x', to: m.home, v: LSPEED.qcX }, { op: 'mv', k: 'ty', to: LT.LANE_Y + laneNo * LT.LANE_DY, v: LSPEED.qcT },
+    { op: 'mv', k: 'tz', to: 0, v: LSPEED.qcH }, { op: 'wait', d: LSPEED.lock }, { op: 'pick', ids: c.units }, { op: 'mv', k: 'tz', to: LT.QC_TOP, v: LSPEED.qcH },
+    { op: 'mv', k: 'x', to: ship.x0 + best.bay * LT.BAY_M + LT.BAY_M / 2, v: LSPEED.qcX }, { op: 'mv', k: 'ty', to: LT.SHIP_Y + best.row * LT.ROW_SHIP + 1.3, v: LSPEED.qcT },
+    { op: 'mv', k: 'tz', to: 4 + best.h * 2.6, v: LSPEED.qcH }, { op: 'wait', d: LSPEED.lock }, { op: 'drop', to: { t: 'ship', s: ship.id, c: `${best.bay}-${best.row}` } },
+    { op: 'mv', k: 'tz', to: LT.QC_TOP, v: LSPEED.qcH }, { op: 'end' }];
+}
+// sprinter route: up to the road, along it, then straight in; the container turns with the sprinter
+function spRoute(m, x, y, approachAlongX) {
+  const out = [];
+  if (Math.abs(m.y - LT.ROAD_Y) > 0.5) out.push({ op: 'drive', x: m.x, y: LT.ROAD_Y });
+  if (approachAlongX) { out.push({ op: 'drive', x: x + (m.x < x ? -16 : 16), y: LT.ROAD_Y }, { op: 'drive', x: x + (m.x < x ? -16 : 16), y }, { op: 'drive', x, y }); }
+  else out.push({ op: 'drive', x, y: LT.ROAD_Y }, { op: 'drive', x, y });
+  return out;
+}
+function dispatchSP(m) {
+  if (!m.qc) return;
+  const qc = qcOf(m.qc);
+  // DISCHARGE stage 2: a box waiting in one of my crane's lanes, to an exact zone of the water-side TP of its block
+  const disc = open('DISCHARGE', c => c.qc === m.qc && c.st === 1);
+  const load = open('LOAD', c => c.qc === m.qc && c.st === 1);
+  const cand = [];
+  disc.forEach(c => cand.push({ c, kind: 'D' }));
+  load.forEach(c => cand.push({ c, kind: 'L' }));
+  cand.sort((a, b) => a.c.ready - b.c.ready);
+  const why = [];
+  for (const { c, kind } of cand) {
+    if (kind === 'D') {
+      const z = freeZone(c.block);
+      if (z < 0) { why.push(`בלוק ${pad2(c.block)}, TP צד הים: כל 8 האזורים תפוסים`); continue; }
+      const laneNo = L.units[c.units[0]].loc.l, lp = { x: qc.home, y: LT.LANE_Y + laneNo * LT.LANE_DY }, zp = zoneXY(c.block, 'W', z);
+      L.tp[c.block].W[z].book = c.id; c.zone = z;
+      take(c, m, `מסיע ${c.units.join(' + ')} מנתיב ${laneNo + 1} של ${m.qc} לבלוק ${pad2(c.block)}, TP צד הים, אזור ${z + 1}`);
+      const toLane = spRoute(m, lp.x, lp.y, true);
+      m.steps = [...toLane, { op: 'wait', d: 6 }, { op: 'pick', ids: c.units }, { op: 'freeLane', q: m.qc, l: laneNo }, { op: 'drive', x: lp.x + (m.x < lp.x ? 16 : -16), y: lp.y },
+        { op: 'drive', x: lp.x + (m.x < lp.x ? 16 : -16), y: LT.ROAD_Y }, { op: 'drive', x: zp.x, y: LT.ROAD_Y }, { op: 'drive', x: zp.x, y: zp.y }, { op: 'wait', d: 6 },
+        { op: 'drop', to: { t: 'tp', b: c.block, s: 'W', z } }, { op: 'drive', x: zp.x, y: LT.ROAD_Y }, { op: 'end' }];
+      return;
+    }
+    // LOAD stage 2 starts at the sprinter: take the box from its exact TP zone, to an exact free lane of my crane
+    const u = L.units[c.units[0]], lane = freeLane(m.qc);
+    if (lane < 0) { why.push(`כל 4 הנתיבים של ${m.qc} תפוסים`); continue; }
+    // while the crane still discharges, one lane always stays free for it
+    if (L.lanes[m.qc].filter(l => !l.piece.length && !l.book).length < 2 && open('DISCHARGE', x => x.qc === m.qc && x.st === 0).length) { why.push(`נתיב אחד של ${m.qc} נשאר פנוי לפריקה`); continue; }
+    if (c.units.some(id => L.units[id].loc.t !== 'tp')) continue;
+    const zp = zoneXY(u.loc.b, 'W', u.loc.z), lp = { x: qc.home, y: LT.LANE_Y + lane * LT.LANE_DY };
+    L.lanes[m.qc][lane].book = c.id; c.lane = lane;
+    take(c, m, `לוקח ${c.units.join(' + ')} מבלוק ${pad2(u.loc.b)}, TP צד הים, אזור ${u.loc.z + 1}, לנתיב ${lane + 1} של ${m.qc}`);
+    const zone = { b: u.loc.b, z: u.loc.z };
+    m.steps = [...spRoute(m, zp.x, zp.y, false), { op: 'wait', d: 6 }, { op: 'pick', ids: c.units }, { op: 'freeZone', b: zone.b, z: zone.z }, { op: 'drive', x: zp.x, y: LT.ROAD_Y },
+      { op: 'drive', x: lp.x + (zp.x < lp.x ? -16 : 16), y: LT.ROAD_Y }, { op: 'drive', x: lp.x + (zp.x < lp.x ? -16 : 16), y: lp.y }, { op: 'drive', x: lp.x, y: lp.y }, { op: 'wait', d: 6 },
+      { op: 'drop', to: { t: 'lane', q: m.qc, l: lane } }, { op: 'drive', x: lp.x + (zp.x < lp.x ? 16 : -16), y: lp.y }, { op: 'drive', x: lp.x + (zp.x < lp.x ? 16 : -16), y: LT.ROAD_Y }, { op: 'end' }];
+    return;
+  }
+  m.why = why[0] || (L.cmds.some(c => c.qc === m.qc && c.status !== 'DONE') ? `מחכה לעבודה מ-${m.qc}` : `${m.qc} סיים: אין עבודה`);
+}
+// the water-side yard crane: never hands a box to a sprinter; it only takes from / puts on its TP
+function stackFor(b, u) {
+  let best = null;
+  for (let bay = 0; bay < LT.W_BAYS; bay++) {
+    if (isRfBay(bay) !== u.rf) continue;
+    for (let row = 0; row < LT.ROWS; row++) {
+      const i = bay * LT.ROWS + row, st = L.stacks[b][i], h = st.length + (L.slotBook[b + '-' + i] || 0);
+      if (h >= 4) continue;
+      if (st.length && L.units[st[0]].size !== u.size) continue;
+      // a box waiting to be loaded is never buried
+      if (st.some(id => L.units[id].wi && L.cmds.find(c => c.id === L.units[id].wi)?.kind === 'LOAD')) continue;
+      const score = bay * 2 + h * 6 + Math.abs(row - 3.5);
+      if (!best || score < best.score) best = { i, bay, row, score };
+    }
+  }
+  return best;
+}
+function dispatchASC(m) {
+  const b = m.block, tp = L.tp[b].W;
+  // DISCHARGE stage 3: a box a sprinter left in my TP goes into a stack, one box per lift (a twin = 2 lifts)
+  const disc = open('DISCHARGE', c => c.st === 2 && c.block === b).filter(c => c.units.some(id => L.units[id].loc.t === 'tp'));
+  if (disc.length) {
+    const c = disc[0], id = c.units.find(x => L.units[x].loc.t === 'tp'), u = L.units[id], z = u.loc.z, zp = zoneXY(b, 'W', z), last = c.units.filter(x => L.units[x].loc.t === 'tp').length === 1;
+    const slot = stackFor(b, u);
+    if (!slot) { m.why = `אין מקום פנוי בבלוק ${pad2(b)}`; return; }
+    L.slotBook[b + '-' + slot.i] = (L.slotBook[b + '-' + slot.i] || 0) + 1;
+    const sp = slotXY(b, slot.bay, slot.row), h = L.stacks[b][slot.i].length;
+    take(c, m, `מרים ${id} מאזור ${z + 1} ב-TP ומוריד לבלוק ${pad2(b)}, שורה ${pad2(slot.bay + 1)}, טור ${slot.row + 1}, קומה ${h + 1}`);
+    m.steps = [{ op: 'mv', k: 'tz', to: LT.ASC_TOP, v: LSPEED.ascH * 2 }, { op: 'mv', k: 'gy', to: zp.y, v: LSPEED.ascG }, { op: 'mv', k: 'tx', to: zp.x, v: LSPEED.ascT },
+      { op: 'mv', k: 'tz', to: 0, v: LSPEED.ascH * 2 }, { op: 'wait', d: LSPEED.lock }, { op: 'pick', ids: [id] }, { op: 'mv', k: 'tz', to: LT.ASC_TOP, v: LSPEED.ascH },
+      { op: 'mv', k: 'gy', to: sp.y, v: LSPEED.ascG }, { op: 'mv', k: 'tx', to: sp.x, v: LSPEED.ascT }, { op: 'mv', k: 'tz', to: h * LT.TIER_M, v: LSPEED.ascH }, { op: 'wait', d: LSPEED.lock },
+      { op: 'drop', to: { t: 'stack', b, i: slot.i } }, { op: 'mv', k: 'tz', to: LT.ASC_TOP, v: LSPEED.ascH * 2 }, last ? { op: 'freeZone', b, z } : { op: 'wait', d: 0 }, last ? { op: 'end' } : { op: 'end', partial: true }];
+    return;
+  }
+  // LOAD stage 1 (preparation): bring an export from its stack to a free zone, once its crane has started loading or is almost done discharging.
+  // At most 2 zones hold loads, so discharges always find room
+  const staged = tp.filter(z => z.book && L.cmds.find(c => c.id === z.book)?.kind === 'LOAD' || z.piece.some(id => L.cmds.find(c => c.id === L.units[id].wi)?.kind === 'LOAD')).length;
+  const loads = open('LOAD', c => c.st === 0 && c.block === b && releasedLoad(c.qc));
+  if (!loads.length) { m.why = L.cmds.some(c => c.block === b && c.status !== 'DONE') ? 'מחכה לעבודה' : 'אין עבודה בבלוק'; return; }
+  if (staged >= 2) { m.why = 'כבר יש 2 העמסות מוכנות ב-TP: מחכה שספרינטר ייקח'; return; }
+  const z = freeZone(b);
+  if (z < 0) { m.why = `TP צד הים של בלוק ${pad2(b)} מלא`; return; }
+  const c = loads[0], id = c.units[0], u = L.units[id], bay = Math.floor(u.loc.i / LT.ROWS), row = u.loc.i % LT.ROWS, sp = slotXY(b, bay, row), h = L.stacks[b][u.loc.i].indexOf(id), zp = zoneXY(b, 'W', z);
+  if (L.stacks[b][u.loc.i].length - 1 !== h) { m.why = `${id} קבורה: צריך Rehandle`; return; }
+  tp[z].book = c.id; c.zone = z;
+  take(c, m, `מוציא ${id} מבלוק ${pad2(b)}, שורה ${pad2(bay + 1)}, לאזור ${z + 1} ב-TP צד הים (הכנה ל-LOAD)`);
+  m.steps = [{ op: 'mv', k: 'tz', to: LT.ASC_TOP, v: LSPEED.ascH * 2 }, { op: 'mv', k: 'gy', to: sp.y, v: LSPEED.ascG }, { op: 'mv', k: 'tx', to: sp.x, v: LSPEED.ascT },
+    { op: 'mv', k: 'tz', to: h * LT.TIER_M, v: LSPEED.ascH * 2 }, { op: 'wait', d: LSPEED.lock }, { op: 'pick', ids: [id] }, { op: 'mv', k: 'tz', to: LT.ASC_TOP, v: LSPEED.ascH },
+    { op: 'mv', k: 'gy', to: zp.y, v: LSPEED.ascG }, { op: 'mv', k: 'tx', to: zp.x, v: LSPEED.ascT }, { op: 'mv', k: 'tz', to: 0, v: LSPEED.ascH }, { op: 'wait', d: LSPEED.lock },
+    { op: 'drop', to: { t: 'tp', b, s: 'W', z } }, { op: 'zoneBooked', b, z }, { op: 'mv', k: 'tz', to: LT.ASC_TOP, v: LSPEED.ascH * 2 }, { op: 'end' }];
+}
+const releasedLoad = qc => L.cmds.filter(c => c.kind === 'DISCHARGE' && c.qc === qc && c.st === 0 && c.status !== 'DONE').length <= 3;
+// small ops used inside the step lists
+const STEP_OPS = {
+  freeLane: s => { const l = L.lanes[s.q][s.l]; l.book = null; },
+  freeZone: s => { L.tp[s.b].W[s.z].book = null; },
+  zoneBooked: s => { L.tp[s.b].W[s.z].book = null; },
+};
+
+function liveTick(dt) {
+  L.t += dt;
+  L.mach.forEach(m => { runSteps(m, dt); dispatch(m); });
+}
+function liveRun(sec, step = 0.5) { for (let t = 0; t < sec; t += step) liveTick(step); }
+// every box is in exactly one place, no stack above 6, nothing booked twice (also run by the smoke test)
+function liveCheck() {
+  const errs = [], seen = {};
+  const at = (id, where) => { if (seen[id]) errs.push(`${id} in ${seen[id]} and ${where}`); seen[id] = where; };
+  L.ships.forEach(s => Object.entries(s.cells).forEach(([c, cell]) => cell.forEach(p => p.forEach(id => at(id, 'ship ' + c)))));
+  Object.entries(L.lanes).forEach(([q, ls]) => ls.forEach((l, i) => l.piece.forEach(id => at(id, q + ' lane ' + (i + 1)))));
+  Object.entries(L.tp).forEach(([b, t]) => ['W', 'L'].forEach(sd => t[sd].forEach((z, i) => { z.piece.forEach(id => at(id, `TP ${b}${sd} ${i + 1}`)); if (z.piece.length > 2) errs.push(`TP ${b} zone ${i + 1} holds ${z.piece.length}`); })));
+  Object.entries(L.stacks).forEach(([b, st]) => st.forEach((s, i) => { s.forEach(id => at(id, `block ${b} stack ${i}`)); if (s.length > LT.TIERS) errs.push(`block ${b} stack ${i} is ${s.length} high`); }));
+  L.mach.forEach(m => m.carry.forEach(id => at(id, m.id)));
+  Object.keys(L.units).forEach(id => { if (!seen[id]) errs.push(id + ' is nowhere'); });
+  return errs;
+}
+function liveSave() { try { localStorage.setItem(LIVE_KEY, JSON.stringify(L)); } catch (e) { /* storage blocked: keep running in memory */ } }
+function liveLoad() {
+  let raw = null;
+  try { raw = localStorage.getItem(LIVE_KEY); } catch (e) { /* storage blocked */ }
+  if (!raw) { liveFresh(); return; }
+  try {
+    const s = JSON.parse(raw);
+    if (!s || s.ver !== LIVE_VER || !s.mach || !s.units) throw new Error('version ' + (s && s.ver));
+    L = s;
+  } catch (e) {
+    liveFresh();
+    LV.msg = 'המסוף החי נשמר בגרסה אחרת של הסימולטור, ולכן התחלנו מסוף חדש. כל השאר (החצר הקטנה, האוניות, החשבונות) לא השתנה.';
+  }
+}
+
+// ---------- drawing ----------
+const LCOL = { IMP: '#c0702e', EXP: '#3f8f5a', RF: '#2a6fc0', DG: '#c0262d', sea: '#7fb2d9', land: '#d6d3ca', apron: '#bfbcb3', road: '#a8a59c', ground: '#e9e6dd',
+  qc: '#1f4e79', asc: '#e3b21c', sp: '#b8432a', sel: '#ffe600' };
+function liveNewShips() {
+  // the two loaded ships sail; two new ships come in with imports, and new exports wait in the yard
+  L.ships.forEach(s => Object.values(s.cells).forEach(cell => cell.forEach(p => p.forEach(id => { delete L.units[id]; }))));
+  const names = [['MV Coastal Pupil', 'GRN'], ['MV Quay Example', 'BLU'], ['MV Night Shift', 'RED'], ['MV Twin Lift', 'GRN']];
+  const pick = L.seq.ship % names.length;
+  L.ships = []; L.cmds = L.cmds.filter(c => c.status !== 'DONE' && c.units.every(id => L.units[id]));
+  const xs = [60, 430];
+  const s1 = liveShip(names[pick][0], names[pick][1], xs[0], 24), s2 = liveShip(names[(pick + 1) % 4][0], names[(pick + 1) % 4][1], xs[1], 24);
+  L.mach.filter(m => m.type === 'QC').forEach((m, q) => { m.ship = q < 4 ? s1.id : s2.id; m.phase = 'DISCHARGE'; });
+  liveExports(s1, [2, 3, 4, 5, 6, 7], 28);
+  liveExports(s2, [10, 11, 12, 13, 14, 15], 28);
+  liveLog('VESSEL', `שתי אוניות חדשות ברציף A: ${s1.name}, ${s2.name}`);
+}
+function boxLen(u) { return u.size === '40' ? LT.BOX40 : LT.BOX20; }
+function drawBox(g, p, u, k) {
+  const len = boxLen(u), w = LT.BOX_W, sc = 1 + p.z / 45;
+  g.save(); g.translate(p.x, p.y); g.rotate(p.a);
+  if (p.z > 0.5) { g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(-len / 2 + p.z * 0.12, -w / 2 + p.z * 0.12, len, w); }
+  g.scale(sc, sc);
+  g.fillStyle = u.rf ? LCOL.RF : LCOL[u.kind];
+  g.fillRect(-len / 2, -w / 2, len, w);
+  g.lineWidth = u.dg ? 0.6 : 0.15; g.strokeStyle = u.dg ? LCOL.DG : '#0008'; g.strokeRect(-len / 2, -w / 2, len, w);
+  if (LV.sel && LV.sel.id === u.id) { g.lineWidth = 0.8; g.strokeStyle = LCOL.sel; g.strokeRect(-len / 2 - 0.6, -w / 2 - 0.6, len + 1.2, w + 1.2); }
+  if (k > 4 && p.tier) { g.rotate(-p.a); g.fillStyle = '#fff'; g.font = '2px Tahoma'; g.textAlign = 'center'; g.fillText(p.tier, 0, 0.7); }
+  g.restore();
+}
+function liveDraw(cv) {
+  const dpr = window.devicePixelRatio || 1, cw = cv.clientWidth, ch = cv.clientHeight;
+  if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) { cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr); }
+  if (!LV.scale) liveFit(cv, 'quay');
+  if (LV.follow && LV.sel) { const p = selPos(); if (p) { LV.ox = p.x - cw / 2 / LV.scale; LV.oy = p.y - ch / 2 / LV.scale; } }
+  const g = cv.getContext('2d'), k = LV.scale;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.fillStyle = LCOL.land; g.fillRect(0, 0, cw, ch);
+  g.setTransform(dpr * k, 0, 0, dpr * k, -LV.ox * k * dpr, -LV.oy * k * dpr);
+  // labels of 3.5 m and up never get smaller than 10 screen pixels, so names stay readable when zoomed out
+  const txt = (s, x, y, size, color = '#000', align = 'left') => { g.fillStyle = color; g.font = `${size >= 3.5 ? Math.max(size, 10 / k) : size}px Tahoma`; g.textAlign = align; g.fillText(s, x, y); };
+  // sea, quays, roads
+  g.fillStyle = LCOL.sea; g.fillRect(-500, -500, LT.WORLD_W + 1000, 570);
+  g.fillStyle = LCOL.apron; g.fillRect(20, 70, 780, LT.TPW_Y - 72); g.fillStyle = '#cfccc4'; g.fillRect(820, 70, 430, LT.TPW_Y - 72);
+  g.fillStyle = LCOL.road; g.fillRect(20, LT.ROAD_Y - 9, 780, 18); g.fillRect(-20, LT.ROAD2_Y - 10, LT.WORLD_W + 40, 22);
+  g.fillStyle = '#555'; g.fillRect(20, 69, 780, 1.5); g.fillRect(820, 69, 430, 1.5);
+  txt('Berth A - automated, 8 remote quay cranes', 24, 67, 4, '#003');
+  txt('Berth B - manual (not simulated)', 824, 67, 4, '#003');
+  txt('Sprinter road', 24, LT.ROAD_Y + 1.5, 3, '#333');
+  txt('Land-side road (trucks)', 24, LT.ROAD2_Y + 2, 3.5, '#333');
+  // workshop and sprinter parking
+  g.fillStyle = '#9a8f7a'; g.fillRect(960, 136, 70, 36); txt('Workshop', 995, 156, 5, '#fff', 'center');
+  g.strokeStyle = '#666'; g.lineWidth = 0.3; g.strokeRect(815, 132, 112, 40); txt('Sprinter parking', 817, 176, 3, '#333');
+  // ships
+  L.ships.forEach(s => {
+    const x1 = s.x0 + s.bays * LT.BAY_M;
+    g.fillStyle = '#4b5058'; g.beginPath(); g.moveTo(s.x0 - 6, LT.SHIP_Y - 3); g.lineTo(x1, LT.SHIP_Y - 3); g.lineTo(x1 + 22, LT.SHIP_Y + 20); g.lineTo(x1, LT.SHIP_Y + 45); g.lineTo(s.x0 - 6, LT.SHIP_Y + 45); g.closePath(); g.fill();
+    g.fillStyle = '#e8e8e8'; g.fillRect(s.x0 - 4, LT.SHIP_Y + 2, 8, 37);
+    txt(`${s.name} (${s.line})`, s.x0 + 10, LT.SHIP_Y - 5, 4.5, '#002');
+  });
+  // blocks, TPs, the gap
+  for (let b = 1; b <= LT.BLOCKS; b++) {
+    const x = blockX(b), w = LT.ROWS * LT.ROW_M;
+    g.fillStyle = LCOL.ground; g.fillRect(x, LT.BLK_Y, w, LT.BAYS * LT.BAY_M);
+    g.fillStyle = 'rgba(42,111,192,.13)'; g.fillRect(x, LT.BLK_Y + (LT.RF_FROM - 1) * LT.BAY_M, w, (LT.RF_TO - LT.RF_FROM + 1) * LT.BAY_M);
+    g.strokeStyle = LT.DG.includes(b) ? LCOL.DG : '#888'; g.lineWidth = LT.DG.includes(b) ? 0.8 : 0.3; g.strokeRect(x, LT.BLK_Y, w, LT.BAYS * LT.BAY_M);
+    g.strokeStyle = '#999'; g.lineWidth = 0.6; g.beginPath(); g.moveTo(x - 1.5, LT.TPW_Y); g.lineTo(x - 1.5, LT.TPL_Y + 28); g.moveTo(x + w + 1.5, LT.TPW_Y); g.lineTo(x + w + 1.5, LT.TPL_Y + 28); g.stroke();
+    if (k > 3) { g.strokeStyle = '#0001'; g.lineWidth = 0.1; for (let bay = 1; bay < LT.BAYS; bay++) { g.beginPath(); g.moveTo(x, LT.BLK_Y + bay * LT.BAY_M); g.lineTo(x + w, LT.BLK_Y + bay * LT.BAY_M); g.stroke(); } }
+    txt(pad2(b) + (LT.DG.includes(b) ? ' DG' : ''), x + w / 2, LT.BLK_Y + 6, 4, LT.DG.includes(b) ? LCOL.DG : '#333', 'center');
+    txt(pad2(b), x + w / 2, LT.TPL_Y - 2, 3.5, '#333', 'center');
+    ['W', 'L'].forEach(side => L.tp[b][side].forEach((z, i) => {
+      const p = zoneXY(b, side, i);
+      g.fillStyle = '#f4f1e8'; g.fillRect(p.x - 2.5, p.y - 6.6, 5, 13.2);
+      g.setLineDash(z.book ? [1, 0.6] : []); g.strokeStyle = z.book ? '#d07a00' : '#777'; g.lineWidth = z.book ? 0.5 : 0.2; g.strokeRect(p.x - 2.5, p.y - 6.6, 5, 13.2); g.setLineDash([]);
+      if (k > 3.5) txt(String(i + 1), p.x + 1.6, p.y + 6, 1.8, '#666', 'center');
+    }));
+  }
+  txt('gap', blockX(8) + LT.ROWS * LT.ROW_M + 25, LT.BLK_Y + 200, 5, '#555', 'center');
+  txt('Reefer rows ' + LT.RF_FROM + '-' + LT.RF_TO, blockX(1) - 3, LT.BLK_Y + (LT.RF_FROM - 1) * LT.BAY_M - 1, 3, LCOL.RF, 'right');
+  // lanes under each quay crane
+  L.mach.filter(m => m.type === 'QC').forEach(m => L.lanes[m.id].forEach((l, i) => {
+    const y = LT.LANE_Y + i * LT.LANE_DY;
+    g.setLineDash(l.book ? [1, 0.6] : []); g.strokeStyle = l.book ? '#d07a00' : '#eee'; g.lineWidth = l.book ? 0.5 : 0.25; g.strokeRect(m.home - 8, y - 1.9, 16, 3.8); g.setLineDash([]);
+    if (k > 3) txt(String(i + 1), m.home - 9.5, y + 0.8, 2, '#fff', 'center');
+  }));
+  // containers at rest: ships, stacks (top box, with its tier), lanes, TPs
+  L.ships.forEach(s => Object.values(s.cells).forEach(cell => cell.forEach(p => p.forEach(id => drawBox(g, unitPose(L.units[id]), L.units[id], k)))));
+  for (let b = 1; b <= LT.BLOCKS; b++) L.stacks[b].forEach(st => { if (!st.length) return; const u = L.units[st[st.length - 1]], p = unitPose(u); p.z = 0; p.tier = st.length; drawBox(g, p, u, k); });
+  Object.values(L.lanes).forEach(ls => ls.forEach(l => l.piece.forEach(id => drawBox(g, unitPose(L.units[id]), L.units[id], k))));
+  Object.values(L.tp).forEach(t => ['W', 'L'].forEach(sd => t[sd].forEach(z => z.piece.forEach(id => drawBox(g, unitPose(L.units[id]), L.units[id], k)))));
+  // sprinters, then yard cranes, then quay cranes (the tallest machines are drawn last)
+  L.mach.forEach(m => {
+    if (m.type !== 'SP') return;
+    g.save(); g.translate(m.x, m.y); g.rotate(m.hd);
+    g.fillStyle = LCOL.sp; g.fillRect(-7, -2.6, 14, 1.1); g.fillRect(-7, 1.5, 14, 1.1); g.fillRect(-7, -2.6, 1.4, 5.2); g.fillRect(5.6, -2.6, 1.4, 5.2);
+    if (LV.sel && LV.sel.id === m.id) { g.strokeStyle = LCOL.sel; g.lineWidth = 0.7; g.strokeRect(-7.8, -3.4, 15.6, 6.8); }
+    g.restore();
+    m.carry.forEach(id => drawBox(g, unitPose(L.units[id]), L.units[id], k));
+    if (k > 2.2) txt(m.id.slice(2), m.x, m.y - 3.6, 2.4, '#5a1a0a', 'center');
+  });
+  L.mach.forEach(m => {
+    if (m.type !== 'ASC') return;
+    const x = blockX(m.block), w = LT.ROWS * LT.ROW_M;
+    g.fillStyle = LCOL.asc; g.fillRect(x - 2.5, m.gy - 1.6, w + 5, 3.2); g.fillStyle = '#7a5d00'; g.fillRect(x - 3, m.gy - 2.6, 1.6, 5.2); g.fillRect(x + w + 1.4, m.gy - 2.6, 1.6, 5.2);
+    g.fillStyle = '#333'; g.fillRect(m.tx - 1.8, m.gy - 2, 3.6, 4);
+    if (LV.sel && LV.sel.id === m.id) { g.strokeStyle = LCOL.sel; g.lineWidth = 0.7; g.strokeRect(x - 3.6, m.gy - 3.4, w + 7.2, 6.8); }
+    m.carry.forEach(id => { const p = unitPose(L.units[id]); p.tier = m.tz > LT.TIER_M * LT.TIERS - 0.5 ? 'UP' : 'T' + (Math.round(m.tz / LT.TIER_M) + 1); drawBox(g, p, L.units[id], k + 2); });
+    if (k > 2.2) txt(m.id.slice(4), x + w + 3.5, m.gy + 1, 2.4, '#5a4400');
+  });
+  L.mach.forEach(m => {
+    if (m.type !== 'QC') return;
+    g.fillStyle = 'rgba(31,78,121,.85)'; g.fillRect(m.x - 9, 72, 2.2, 32); g.fillRect(m.x + 6.8, 72, 2.2, 32);
+    g.fillStyle = LCOL.qc; g.fillRect(m.x - 1.6, -6, 3.2, 112);
+    g.fillStyle = '#0c2238'; g.fillRect(m.x - 3.4, m.ty - 2.4, 6.8, 4.8);
+    if (LV.sel && LV.sel.id === m.id) { g.strokeStyle = LCOL.sel; g.lineWidth = 0.8; g.strokeRect(m.x - 10, -7, 20, 114); }
+    m.carry.forEach(id => drawBox(g, unitPose(L.units[id]), L.units[id], k));
+    txt(m.id, m.x, -8, 3.6, '#002', 'center');
+  });
+}
+// view: fit the quay and the water side of the blocks, the whole terminal, or zoom around the centre
+function liveFit(cv, how) {
+  const cw = cv.clientWidth, ch = cv.clientHeight;
+  if (how === 'all') { LV.scale = Math.min(cw / (LT.WORLD_W + 20), ch / (LT.WORLD_H + 30)); LV.ox = -10; LV.oy = -20; }
+  else { LV.scale = cw / 800; LV.ox = 12; LV.oy = -14; }
+}
+function liveZoom(f, sx, sy) {
+  const cv = $('lmMap'); if (!cv) return;
+  sx = sx ?? cv.clientWidth / 2; sy = sy ?? cv.clientHeight / 2;
+  const wx = LV.ox + sx / LV.scale, wy = LV.oy + sy / LV.scale;
+  LV.scale = Math.min(14, Math.max(0.3, LV.scale * f));
+  LV.ox = wx - sx / LV.scale; LV.oy = wy - sy / LV.scale;
+}
+function selPos() {
+  const s = LV.sel; if (!s) return null;
+  if (s.kind === 'unit') return L.units[s.id] ? unitPose(L.units[s.id]) : null;
+  const m = lmach(s.id); if (!m) return null;
+  return m.type === 'QC' ? { x: m.x, y: m.ty } : m.type === 'SP' ? { x: m.x, y: m.y } : { x: m.tx, y: m.gy };
+}
+
+// ---------- what is under the mouse (Hebrew), and what is selected ----------
+const mstate = m => m.steps.length || m.wi ? 'BUSY' : /SHABBAT/.test(m.why) ? 'SHABBAT' : m.type === 'SP' && !m.qc ? 'IDLE' : /מחכה|תפוס|מלא|ממתין/.test(m.why) ? 'WAIT' : 'IDLE';
+const MTYPE_HE = { QC: 'עגורן רציף (QC), מופעל מרחוק מחדר הבקרה. מרים מכולה מהאונייה לנתיב שמתחתיו, או מהנתיב לאונייה',
+  SP: 'ספרינטר (רכב הסעה גבוה שעובר מעל המכולה ומרים אותה). מסיע בין הנתיב של עגורן הרציף ל-TP של הבלוק, ומניח רק בגובה 1',
+  ASC: 'עגורן חצר אוטומטי (ASC). נוסע לאורך הבלוק, מרים מכולה אחת בכל פעם ומניח בערימה עד 6 קומות' };
+function locText(u) {
+  const l = u.loc;
+  if (l.t === 'ship') { const s = L.ships.find(x => x.id === l.s); return `Ship ${s.name}, bay ${pad2(+l.c.split('-')[0] + 1)}, row ${pad2(+l.c.split('-')[1])}, tier ${l.k + 1}`; }
+  if (l.t === 'lane') return `${l.q} lane ${l.l + 1}`;
+  if (l.t === 'tp') return `Block ${pad2(l.b)} ${l.s === 'W' ? 'water' : 'land'}-side TP zone ${l.z + 1}`;
+  if (l.t === 'stack') return `Block ${pad2(l.b)} bay ${pad2(Math.floor(l.i / LT.ROWS) + 1)} row ${l.i % LT.ROWS + 1} tier ${L.stacks[l.b][l.i].indexOf(u.id) + 1}`;
+  return 'On ' + l.m;
+}
+const unitHe = u => `${u.id}: מכולה ${u.size === '40' ? 'של 40 רגל' : 'של 20 רגל'}, ${u.kind === 'IMP' ? 'יבוא (ירדה מאונייה)' : 'ייצוא (עולה לאונייה)'}${u.rf ? ', קירור' : ''}${u.dg ? ', מטען מסוכן (DG)' : ''}. איפה עכשיו: ${locText(u)}.` +
+  (u.wi ? (() => { const c = L.cmds.find(x => x.id === u.wi); return ` פקודה ${c.id} ${c.kind}, שלב ${c.st + 1} מתוך 3: ${STAGE_HE[c.kind][c.st]}.`; })() : ' אין לה פקודה פתוחה.');
+const machHe = m => `${m.id}: ${MTYPE_HE[m.type]}. מצב: ${mstate(m)}.` + (m.type === 'SP' ? (m.qc ? ` מצוות ל-${m.qc}.` : ' לא מצוות.') : '') + (m.why ? ' ' + m.why + '.' : '') + (m.carry.length ? ` מחזיק: ${m.carry.join(' + ')}.` : '');
+function liveHit(x, y) {
+  const near = [];
+  L.mach.forEach(m => {
+    if (m.type === 'QC' && Math.abs(x - m.x) < 9 && y > -8 && y < 106) near.push({ kind: 'mach', id: m.id, d: Math.abs(x - m.x) + (y < 70 ? Math.abs(y - m.ty) : 3) });
+    if (m.type === 'SP' && Math.hypot(x - m.x, y - m.y) < 7) near.push({ kind: 'mach', id: m.id, d: Math.hypot(x - m.x, y - m.y) * 0.5 });
+    if (m.type === 'ASC' && Math.abs(y - m.gy) < 3.5 && x > blockX(m.block) - 4 && x < blockX(m.block) + 26) near.push({ kind: 'mach', id: m.id, d: Math.abs(y - m.gy) });
+  });
+  Object.values(L.units).forEach(u => { if (u.loc.t === 'on' || u.loc.t === 'stack') return; const p = unitPose(u); if (Math.abs(x - p.x) < (p.a ? 1.4 : boxLen(u) / 2) && Math.abs(y - p.y) < (p.a ? boxLen(u) / 2 : 1.4)) near.push({ kind: 'unit', id: u.id, d: 0.2 }); });
+  for (let b = 1; b <= LT.BLOCKS; b++) {
+    const bx = blockX(b);
+    if (x >= bx && x < bx + LT.ROWS * LT.ROW_M && y >= LT.BLK_Y && y < LT.BLK_Y + LT.BAYS * LT.BAY_M) {
+      const i = Math.floor((y - LT.BLK_Y) / LT.BAY_M) * LT.ROWS + Math.floor((x - bx) / LT.ROW_M), st = L.stacks[b][i];
+      if (st.length) near.push({ kind: 'unit', id: st[st.length - 1], d: 2 });
+      near.push({ kind: 'part', id: 'block', b, i, d: 5 });
+    }
+    [['W', LT.TPW_Y], ['L', LT.TPL_Y]].forEach(([side, y0]) => { if (x >= bx && x < bx + 21.6 && y >= y0 && y < y0 + 28) near.push({ kind: 'part', id: 'tp', b, side, z: Math.floor((x - bx) / 5.4) + (y - y0 >= 14 ? 4 : 0), d: 4 }); });
+  }
+  L.mach.filter(m => m.type === 'QC').forEach(m => { if (Math.abs(x - m.home) < 8 && y > LT.LANE_Y - 3 && y < LT.LANE_Y + 3 * LT.LANE_DY + 3) near.push({ kind: 'part', id: 'lane', q: m.id, l: Math.round((y - LT.LANE_Y) / LT.LANE_DY), d: 4.5 }); });
+  if (!near.length) {
+    if (y < 70) return { kind: 'part', id: L.ships.some(s => x > s.x0 - 6 && x < s.x0 + s.bays * LT.BAY_M + 20 && y > LT.SHIP_Y - 3 && y < LT.SHIP_Y + 45) ? 'ship' : 'sea' };
+    if (x > 815 && y < LT.BLK_Y) return { kind: 'part', id: x > 955 && y > 130 ? 'workshop' : 'berthB' };
+    if (Math.abs(y - LT.ROAD_Y) < 10) return { kind: 'part', id: 'road' };
+    if (Math.abs(y - LT.ROAD2_Y) < 11) return { kind: 'part', id: 'road2' };
+    if (x > blockX(8) + 22 && x < blockX(9) && y > LT.BLK_Y) return { kind: 'part', id: 'gap' };
+    if (y < LT.TPW_Y && x < 800) return { kind: 'part', id: 'apron' };
+    return null;
+  }
+  return near.sort((a, b) => a.d - b.d)[0];
+}
+const PART_HE = {
+  sea: 'הים. האוניות עוגנות לאורך הרציף.',
+  ship: 'אונייה ברציף A. כל מלבן עליה הוא מכולה. עגורני הרציף פורקים ממנה (DISCHARGE) ומעמיסים עליה (LOAD).',
+  berthB: 'רציף B: רציף ידני עם מנופים משלו, בלי חדר בקרה. מצויר רק כדי להבין את המסוף, הסימולטור לא מדמה אותו. המכולות שלו נכנסות לאותם בלוקים.',
+  workshop: 'הסדנה: מתקנת את כל הכלים. מכונה בסדנה לא מקבלת פקודות (שליחה לסדנה תגיע בגרסה 12.1).',
+  road: 'הכביש של הספרינטרים: בין הנתיבים של עגורני הרציף לבין ה-TP של צד הים של כל בלוק.',
+  road2: 'הכביש של המשאיות בצד היבשה. משאיות יגיעו ל-TP של צד היבשה בגרסה 12.2.',
+  gap: 'המעבר הגדול בין בלוק 8 לבלוק 9.',
+  apron: 'משטח הרציף: מתחת לעגורני הרציף יש 4 נתיבים לכל עגורן, ומאחוריהם הכביש של הספרינטרים.',
+};
+function partHe(h) {
+  if (h.kind === 'mach') return machHe(lmach(h.id));
+  if (h.kind === 'unit') return unitHe(L.units[h.id]);
+  if (h.id === 'block') {
+    const bay = Math.floor(h.i / LT.ROWS), row = h.i % LT.ROWS, n = L.stacks[h.b][h.i].length;
+    return `בלוק ${pad2(h.b)}${LT.DG.includes(h.b) ? ' (בלוק למטען מסוכן, DG)' : ''}, שורה (bay) ${pad2(bay + 1)}, טור ${row + 1}${isRfBay(bay) ? ', אזור קירור עם שקעי חשמל' : ''}: ${n} מכולות בערימה (עד 6). הבלוק: 8 טורים לרוחב, 44 שורות לאורך. עגורן אחד בצד הים ואחד בצד היבשה, על אותה מסילה.`;
+  }
+  if (h.id === 'tp') {
+    const z = L.tp[h.b][h.side][h.z];
+    return `בלוק ${pad2(h.b)}, TP של צד ${h.side === 'W' ? 'הים' : 'היבשה'}, אזור ${h.z + 1} מתוך 8: ${z.piece.length ? 'יש בו ' + z.piece.join(' + ') : z.book ? 'מוזמן לפקודה ' + z.book + ' (מכונה כבר בדרך)' : 'פנוי'}. TP = נקודת המסירה בין עגורן החצר לבין ${h.side === 'W' ? 'הספרינטר' : 'המשאית'}. הם אף פעם לא נוגעים באותה מכולה באותו זמן.`;
+  }
+  if (h.id === 'lane') {
+    const l = L.lanes[h.q][h.l];
+    return `נתיב ${h.l + 1} מתוך 4 מתחת ל-${h.q}: ${l.piece.length ? 'יש בו ' + l.piece.join(' + ') : l.book ? 'מוזמן לפקודה ' + l.book : 'פנוי'}. כאן עגורן הרציף והספרינטר מוסרים מכולה זה לזה.`;
+  }
+  return PART_HE[h.id] || '';
+}
+function selInfo() {
+  const s = LV.sel;
+  if (!s) return 'לחץ על מכונה או על מכולה במפה כדי לראות מה היא עושה עכשיו. גלגלת העכבר = זום, גרירה = הזזת המפה.';
+  if (s.kind === 'unit' && !L.units[s.id]) return 'המכולה כבר יצאה מהמסוף עם האונייה.';
+  return s.kind === 'unit' ? unitHe(L.units[s.id]) : machHe(lmach(s.id));
+}
+
+// ---------- the screen ----------
+const liveTag = st => tag({ BUSY: 'st-DISPATCHED', IDLE: 'st-PLANNED', WAIT: 'st-HOLD', SHABBAT: 'st-HOLD', ACTIVE: 'st-DISPATCHED', WAITING: 'st-PLANNED' }[st] || '', st);
+function livePanels() {
+  const kpi = (v, l) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`;
+  const openC = L.cmds.filter(c => c.status !== 'DONE');
+  const idleSp = L.mach.filter(m => m.type === 'SP' && m.qc && mstate(m) !== 'BUSY').length;
+  const qcWait = L.mach.filter(m => m.type === 'QC' && mstate(m) === 'WAIT').length;
+  $('lmKpis').innerHTML = kpi(lfmt(L.t), 'Terminal clock') + kpi(L.stats.disch, 'Discharges done') + kpi(L.stats.load, 'Loads done') +
+    kpi(openC.length, 'Open commands') + kpi(qcWait + ' / 8', 'Quay cranes waiting') + kpi(idleSp, 'Crewed sprinters without work');
+  $('lmInfo').textContent = selInfo();
+  const nb = document.querySelector('[data-act="lmNewShips"]'); if (nb) nb.disabled = openC.length > 0;
+  const crew = qc => L.mach.filter(m => m.type === 'SP' && m.qc === qc).map(m => m.id).join(' ');
+  const row = m => `<tr data-lsel="${m.id}"><td class="mono">${m.id}</td><td>${liveTag(mstate(m))}</td><td>${m.type === 'QC' ? crew(m.id) : m.type === 'SP' ? (m.qc || '-') : 'Block ' + pad2(m.block) + (m.side === 'W' ? ' water side' : ' land side')}</td><td>${esc(m.why || '')}</td><td>${m.moves}</td></tr>`;
+  const types = [['QC', 'Quay cranes'], ['SP', 'Sprinters'], ['ASC', 'Yard cranes']];
+  $('lmMach').innerHTML = `<table class="grid"><tr><th>Machine</th><th>State</th><th>Works for</th><th>Doing now / waiting for</th><th>Lifts</th></tr>` +
+    types.map(([t, label]) => `<tr><td colspan="5"><b>${label}</b></td></tr>` + L.mach.filter(m => m.type === t).map(row).join('')).join('') + '</table>';
+  $('lmCmds').innerHTML = openC.length ? `<table class="grid"><tr><th>Command</th><th>Kind</th><th>Stage now</th><th>Machine on it</th><th>Container</th><th>Where the box is</th></tr>` +
+    openC.slice(0, 80).map(c => `<tr data-lsel="${c.units[0]}"><td class="mono">${c.id}</td><td>${c.kind}</td><td>${c.st + 1}/3 ${STAGES[c.kind][c.st]} ${liveTag(c.status)}</td><td>${c.mach || '-'}</td><td class="mono">${c.units.join(' + ')}</td><td>${locText(L.units[c.units[0]])}</td></tr>`).join('') +
+    '</table>' + (openC.length > 80 ? `<p>ועוד ${openC.length - 80} פקודות.</p>` : '') : '<p>אין פקודות פתוחות: שתי האוניות סיימו. לחץ "New ships" כדי להביא אוניות חדשות.</p>';
+  $('lmLog').innerHTML = L.log.slice(-12).reverse().map(e => `<div>${lfmt(e.t)} [${e.area}] ${esc(e.msg)}</div>`).join('');
+}
+let liveRaf = 0;
+function liveFrame(ts) {
+  liveRaf = requestAnimationFrame(liveFrame);
+  const dt = Math.min(0.1, (ts - (LV.last || ts)) / 1000); LV.last = ts;
+  if (L.speed) { const sim = dt * L.speed, n = Math.ceil(sim / 0.5); for (let i = 0; i < n; i++) liveTick(sim / n); }
+  const cv = $('lmMap');
+  if (!cv) return;
+  liveDraw(cv);
+  if (ts - LV.panelAt > 400) { LV.panelAt = ts; livePanels(); }
+  if (ts - (LV.savedAt || 0) > 5000) { LV.savedAt = ts; liveSave(); }
+}
+function liveView() {
+  const sp = [0, 1, 5, 20, 60].map(v => `<button class="sm${L.speed === v ? ' on' : ''}" data-act="lmSpeed" data-id="${v}">${v ? 'x' + v : 'Pause'}</button>`).join('');
+  const msg = LV.msg ? `<div class="flash err" role="alert">${esc(LV.msg)}</div>` : '';
+  return header('Live Terminal Map', 'Terminal visualization: every machine, every container, every move as it happens',
+    'זו מפה של כל המסוף, מלמעלה, בזמן אמת. כל מלבן צבעוני הוא מכולה, וכל מכולה תמיד נמצאת במקום אחד: על אונייה, בנתיב מתחת לעגורן רציף, על ספרינטר, באזור ב-TP, על עגורן חצר, או בערימה. ' +
+    'DISCHARGE (פריקה) מתחיל בעגורן הרציף: הוא מוריד מהאונייה לנתיב, ספרינטר מסיע לאזור מדויק ב-TP של הבלוק, ועגורן החצר מרים, נוסע עם המכולה ומוריד לערימה. ' +
+    'LOAD (העמסה) הפוך: עגורן החצר מכין את המכולה ב-TP, הספרינטר מתחיל את ה-LOAD ומביא אותה לנתיב מדויק, ועגורן הרציף מעלה לאונייה. ' +
+    'מקום מסומן בקו כתום מקווקו = מוזמן: מכונה כבר בדרך אליו. לחץ על מכונה או מכולה כדי לראות מה היא עושה. גלגלת = זום, גרירה = הזזה.') + msg +
+    `<div class="row lmbar"><span class="lmlbl" data-tip="מהירות השעון של המסוף החי. x1 = זמן אמיתי, x60 = דקה בשנייה.">Speed</span> ${sp}
+      <button class="sm" data-act="lmZoom" data-id="in">Zoom +</button><button class="sm" data-act="lmZoom" data-id="out">Zoom -</button>
+      <button class="sm" data-act="lmZoom" data-id="quay">Quay view</button><button class="sm" data-act="lmZoom" data-id="all">Whole terminal</button>
+      <label data-tip="המפה זזה יחד עם המכונה או המכולה שבחרת, כדי לעקוב אחריה לכל הדרך."><input type="checkbox" data-act="lmFollow"${LV.follow ? ' checked' : ''}> Follow selected</label>
+      <button class="sm" data-act="lmNewShips"${L.cmds.some(c => c.status !== 'DONE') ? ' disabled' : ''}>New ships</button><button class="sm" data-act="lmReset">New terminal</button></div>
+    <div id="lmKpis" class="kpis"></div>
+    <canvas id="lmMap" class="lmmap" tabindex="0" data-tip="מפת המסוף החי. הצבע את העכבר על כל חלק כדי לקרוא מה הוא, ולחץ על מכונה או מכולה כדי לעקוב אחריה."></canvas>
+    <div id="lmInfo" class="lminfo" role="status"></div>
+    <div class="legend"><span><i style="background:${LCOL.IMP}"></i>Import box</span><span><i style="background:${LCOL.EXP}"></i>Export box</span><span><i style="background:${LCOL.RF}"></i>Reefer box</span>
+      <span><i style="background:#fff;border:2px solid ${LCOL.DG}"></i>Dangerous goods (DG)</span><span><i style="background:${LCOL.qc}"></i>Quay crane</span><span><i style="background:${LCOL.sp}"></i>Sprinter</span>
+      <span><i style="background:${LCOL.asc}"></i>Yard crane</span><span><i style="background:#fff;border:2px dashed #d07a00"></i>Booked place</span><span><i style="background:rgba(42,111,192,.25)"></i>Reefer rows</span></div>
+    <fieldset><legend>Live machines</legend><div id="lmMach" class="lmscroll"></div></fieldset>
+    <fieldset><legend>Live commands</legend><div id="lmCmds" class="lmscroll"></div></fieldset>
+    <fieldset><legend>Live log</legend><div id="lmLog" class="mono lmlog"></div></fieldset>`;
+}
+const LIVE_ACTIONS = {
+  lmSpeed: id => { L.speed = Number(id); liveSave(); },
+  lmZoom: id => { const cv = $('lmMap'); if (id === 'in') liveZoom(1.5); else if (id === 'out') liveZoom(1 / 1.5); else if (cv) liveFit(cv, id); },
+  lmFollow: () => { LV.follow = !LV.follow; },
+  lmNewShips: () => { liveNewShips(); liveSave(); },
+  lmReset: () => { liveFresh(); LV.sel = null; LV.msg = null; liveSave(); },
+};
+// mouse on the map: hover explains, click selects, drag pans, wheel zooms
+const lmWorld = e => { const r = e.target.getBoundingClientRect(); return { sx: e.clientX - r.left, sy: e.clientY - r.top, x: LV.ox + (e.clientX - r.left) / LV.scale, y: LV.oy + (e.clientY - r.top) / LV.scale }; };
+document.addEventListener('mousedown', e => { if (e.target.id === 'lmMap') LV.drag = { x: e.clientX, y: e.clientY, ox: LV.ox, oy: LV.oy, moved: false }; });
+document.addEventListener('mousemove', e => {
+  if (LV.drag) { const dx = e.clientX - LV.drag.x, dy = e.clientY - LV.drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) LV.drag.moved = true; if (LV.drag.moved) { LV.ox = LV.drag.ox - dx / LV.scale; LV.oy = LV.drag.oy - dy / LV.scale; LV.follow = false; } }
+  if (e.target.id !== 'lmMap' || !PREFS.tips) return;
+  const w = lmWorld(e), h = liveHit(w.x, w.y), tip = $('tip');
+  if (!h) { tip.hidden = true; return; }
+  tip.textContent = partHe(h); tip.hidden = false;
+  tip.style.left = Math.min(innerWidth - tip.offsetWidth - 4, e.clientX + 14) + 'px';
+  tip.style.top = Math.min(innerHeight - tip.offsetHeight - 4, e.clientY + 16) + 'px';
+});
+document.addEventListener('mouseup', e => {
+  const d = LV.drag; LV.drag = null;
+  if (!d || d.moved || e.target.id !== 'lmMap') return;
+  const w = lmWorld(e), h = liveHit(w.x, w.y);
+  LV.sel = h && (h.kind === 'mach' || h.kind === 'unit') ? { kind: h.kind, id: h.id } : null;
+  if (L) livePanels();
+});
+document.addEventListener('wheel', e => { if (e.target.id !== 'lmMap') return; e.preventDefault(); const w = lmWorld(e); liveZoom(e.deltaY < 0 ? 1.2 : 1 / 1.2, w.sx, w.sy); }, { passive: false });
+document.addEventListener('click', e => { const tr = e.target.closest && e.target.closest('tr[data-lsel]'); if (!tr || !L) return; const id = tr.dataset.lsel; LV.sel = L.units[id] ? { kind: 'unit', id } : { kind: 'mach', id }; LV.follow = true; livePanels(); });
+
 // ---------- rendering ----------
 function render() {
   $('appVer').textContent = `${APP_VERSION} (${APP_DATE})`;
@@ -1323,6 +2031,7 @@ function render() {
     items.map(([id, label]) => `<a data-act="nav" data-id="${id}" class="${UI.page === id ? 'cur' : ''}" tabindex="0">${label}</a>`).join('')).join('');
   const msg = UI.msg ? `<div class="flash ${UI.msg.type}" role="${UI.msg.type === 'err' ? 'alert' : 'status'}">${esc(UI.msg.text)}</div>` : '';
   $('content').innerHTML = msg + (VIEWS[UI.page] || VIEWS.overview)();
+  if (UI.page === 'live') livePanels();
   $('log').innerHTML = S.log.slice(-40).reverse().map(e => `<div>${fmt(e.t)}  [${e.area.padEnd(6)}] ${esc(e.msg)}</div>`).join('');
   const busy = S.eq.filter(e => e.status === 'BUSY').length;
   const planned = S.wis.filter(w => w.status === 'PLANNED').length;
@@ -1340,6 +2049,7 @@ const special = u => [u.reefer ? `Reefer ${u.reefer.set} C (now ${u.reefer.temp}
   u.dg ? `DG ${u.dg}` + (dgBad(u) ? ' ' + tag('st-HOLD', 'TOO CLOSE') : '') : ''].filter(Boolean).join(' &middot; ') || '-';
 
 const VIEWS = {
+  live: () => liveView(),
   overview() {
     const units = Object.values(S.units);
     const inYard = units.filter(u => u.state === 'YARD').length;
@@ -1349,7 +2059,7 @@ const VIEWS = {
     const unbilled = S.charges.filter(c => !c.invoice).reduce((s, c) => s + c.amount, 0);
     const kpi = (v, l) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`;
     return header('Terminal Overview', 'Facility dashboard',
-      'זה מסך הסיכום של הנמל. הנמל בנוי לפי נמל הדרום באשדוד, מוקטן פי 4: שני רציפים, 2 עגורני רציף, 4 בלוקים בחצר עם 2 עגורנים אוטומטיים בכל בלוק, ומסילת רכבת. בשבת (משישי 15:00 עד מוצאי שבת 20:00) שום מכונה לא מקבלת עבודה חדשה. כדי להתחיל: לחץ "Run 1 cycle" כמה פעמים (כל לחיצה = רבע שעה), האונייה הראשונה תגיע, ואז עבור ל-Vessel Visits ולחץ Start work.') +
+      'זה מסך הסיכום של הנמל. הנמל בנוי לפי מסוף מכולות אמיתי (עם שמות ומספרים בדויים), מוקטן פי 4: שני רציפים, 2 עגורני רציף, 4 בלוקים בחצר עם 2 עגורנים אוטומטיים בכל בלוק, ומסילת רכבת. בשבת (משישי 15:00 עד מוצאי שבת 20:00) שום מכונה לא מקבלת עבודה חדשה. כדי להתחיל: לחץ "Run 1 cycle" כמה פעמים (כל לחיצה = רבע שעה), האונייה הראשונה תגיע, ואז עבור ל-Vessel Visits ולחץ Start work.') +
       layoutPanel() +
       `<div class="kpis">${kpi(inYard + ' / ' + slots, 'Units in yard / slots')}${kpi(Math.round(inYard / slots * 100) + '%', 'Yard occupancy')}
       ${kpi(atBerth.length, 'Vessels at berth')}${kpi(S.wis.filter(w => w.status !== 'COMPLETE').length, 'Open work instructions')}
@@ -1360,14 +2070,14 @@ const VIEWS = {
   },
   vessels() {
     return header('Vessel Visits', 'Vessel Visit (phases inbound / arrived / working / complete / departed)',
-      'כל אונייה שמגיעה לנמל היא "ביקור". קודם היא בדרך (INBOUND), מגיעה לרציף (ARRIVED), מתחילים לפרוק ולהעמיס (WORKING), מסיימים (COMPLETE) ויוצאת (DEPARTED). Start work יוצר רשימת משימות לעגורנים: לפרוק את המכולות שעל האונייה ולהעמיס את מכולות הייצוא שמחכות בחצר. לכל אונייה יש רציף (27 או 28). על כל רציף יכולה לעמוד רק אונייה אחת, ואונייה שהרציף שלה תפוס מחכה בחוץ עד שהאונייה הקודמת יוצאת.') +
+      'כל אונייה שמגיעה לנמל היא "ביקור". קודם היא בדרך (INBOUND), מגיעה לרציף (ARRIVED), מתחילים לפרוק ולהעמיס (WORKING), מסיימים (COMPLETE) ויוצאת (DEPARTED). Start work יוצר רשימת משימות לעגורנים: לפרוק את המכולות שעל האונייה ולהעמיס את מכולות הייצוא שמחכות בחצר. לכל אונייה יש רציף (A או B). על כל רציף יכולה לעמוד רק אונייה אחת, ואונייה שהרציף שלה תפוס מחכה בחוץ עד שהאונייה הקודמת יוצאת.') +
       `<fieldset><legend>Create vessel visit</legend><form class="row" data-form="visit">
         <label data-tip="שם האונייה. אפשר לכתוב כל שם.">Vessel <input name="vessel" required maxlength="30" value="MV Quay Example"></label>
         <label data-tip="חברת הספנות שהאונייה שלה. היא זו שתקבל את החשבונית.">Line <select name="line">${Object.keys(LINES).map(l => `<option value="${l}">${l} - ${LINES[l]}</option>`).join('')}</select></label>
         <label data-tip="בעוד כמה שעות האונייה צפויה להגיע לנמל.">ETA in hours <input name="eta" type="number" min="0" max="240" value="2" style="width:60px"></label>
         <label data-tip="כמה מכולות יבוא יש על האונייה, שיצטרכו לפרוק בנמל.">Import units on board <input name="imports" type="number" min="0" max="20" value="6" style="width:60px"></label>
         <label data-tip="כמה עגורני רציף האונייה תקבל כשמתחילים לעבוד עליה: 1 או 2. עם 2 העבודה נגמרת בערך פי 2 מהר יותר, אבל אם שתי אוניות עובדות באותו זמן, אין מספיק עגורנים לשתיהן.">Quay cranes <select name="cranes"><option value="1">1</option><option value="2">2</option></select></label>
-        <label data-tip="ליד איזה רציף האונייה תעגון. רציף 27 ארוך יותר (800 מ' במציאות), רציף 28 קצר יותר (445 מ'). אם הרציף תפוס, האונייה תחכה.">Quay <select name="quay">${QUAYS.map(q => `<option value="${q.id}">${q.id} (${q.real} m)</option>`).join('')}</select></label>
+        <label data-tip="ליד איזה רציף האונייה תעגון. רציף A ארוך יותר (780 מ' במסוף המלא), רציף B קצר יותר (420 מ'). אם הרציף תפוס, האונייה תחכה.">Quay <select name="quay">${QUAYS.map(q => `<option value="${q.id}">${q.id} (${q.real} m)</option>`).join('')}</select></label>
         <button data-tip="יוצר ביקור אונייה חדש ברשימה.">Create</button></form></fieldset>` + visitTable(S.visits, true);
   },
   berth() {
@@ -1444,7 +2154,7 @@ const VIEWS = {
       ` <button class="sm" data-act="bayNext" ${bi < bays.length - 1 ? '' : 'disabled'}>Next &gt;</button>`;
     const modes = ['pod', 'weight'].map(m => `<button class="sm ${m === mode ? 'on' : ''}" data-act="stowMode" data-id="${m}">Colour by ${m === 'pod' ? 'POD' : 'weight'}</button>`).join(' ');
     // one box face: stop or weight colour; the text always says the port and the weight (meaning not by colour alone)
-    const face = u => u.category === 'IMPORT' ? { cls: ' impslot', txt: 'IMP<br>Ashdod', style: '' }
+    const face = u => u.category === 'IMPORT' ? { cls: ' impslot', txt: 'IMP<br>here', style: '' }
       : { cls: mode === 'pod' ? ' pod' + u.pod : '', txt: `${podCode(v, u.pod)}<br>${u.weight} t`,
         style: mode === 'pod' ? '' : ` style="background:hsl(210,70%,${Math.round(92 - (u.weight - 8) * 2.4)}%);color:${u.weight > 19 ? '#fff' : '#000'}"` };
     const boxLabel = u => `${u.id}, ${sizeOf(u)} ft${u.category === 'EXPORT' ? `, POD ${podCode(v, u.pod)}, ${u.weight} t` : ''}`;
@@ -1537,7 +2247,7 @@ const VIEWS = {
     }
     const route = ROUTES[v.line].map((c, i) => `${i + 1}. ${c} ${PORTS[c]}`).join(' &rarr; ');
     return head + `<p>${visits}</p>
-      <p><b>${esc(v.vessel)}</b> (${v.id}, ${v.line}, quay ${v.quay}, ${v.phase}). Route after Ashdod: ${route}</p>
+      <p><b>${esc(v.vessel)}</b> (${v.id}, ${v.line}, quay ${v.quay}, ${v.phase}). Route after this port: ${route}</p>
       ${pbar ? `<p>${pbar}</p>` : ''}
       <p class="pstatus">${summary}</p>
       <p>${bayBtns} &nbsp; ${modes}</p>
@@ -1698,7 +2408,7 @@ const VIEWS = {
     const recv = S.appts.filter(a => a.status === 'BOOKED' && a.kind !== 'DELIVER').sort((a, b) => a.slot - b.slot);
     const pickAppt = u => S.appts.find(a => a.status === 'BOOKED' && a.unit === u.id);
     return header('Gate Transactions', 'Gate: truck visits, receive export / deliver import, hold checks',
-      'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. כל משאית צריכה תור (Appointment) שהוזמן מראש במסך Truck Appointments: משאית בלי תור, או שהגיעה יותר מחצי שעה לפני או אחרי השעה שלה, נדחית. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר. שעות השער כמו בנמל הדרום: ראשון עד חמישי 05:00-24:00, שישי 05:00-14:45, שבת סגור. משאית שמגיעה מחוץ לשעות נדחית, ורואים בטבלה מתי השער ייפתח.') +
+      'בשער נכנסות משאיות. משאית שמביאה מכולת ייצוא (Receive) צריכה לציין לאיזו אונייה היא מיועדת. משאית שבאה לקחת מכולת יבוא (Deliver) תידחה אם יש על המכולה עיכוב מכס. כל משאית צריכה תור (Appointment) שהוזמן מראש במסך Truck Appointments: משאית בלי תור, או שהגיעה יותר מחצי שעה לפני או אחרי השעה שלה, נדחית. אחרי שהשער מאשר, נוצרת משימה לעגורן החצר. שעות השער של נמל הלימוד: ראשון עד חמישי 05:00-24:00, שישי 05:00-14:45, שבת סגור. משאית שמגיעה מחוץ לשעות נדחית, ורואים בטבלה מתי השער ייפתח.') +
       `<fieldset><legend>Receive (gate in)</legend><form class="row" data-form="gatein">
         <label data-tip="ייצוא = מכולה מלאה שתעלה על אונייה. ריקה = מכולה ריקה שחוזרת לנמל.">Type <select name="kind"><option value="EXPORT">Export full, booked to vessel</option><option value="EMPTY">Empty return</option></select></label>
         <label data-tip="לאיזו אונייה מכולת הייצוא מיועדת.">Vessel visit <select name="visit">${open.map(v => `<option value="${v.id}">${v.id} ${esc(v.vessel)} (${v.phase})</option>`).join('')}</select></label>
@@ -1842,7 +2552,7 @@ const VIEWS = {
   },
   equipment() {
     return header('Equipment (ECS)', 'Equipment Control System; QC, AGV/AHT Manager, ASC Manager',
-      'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן, כמו בנמל הדרום מוקטן פי 4: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ו-2 עגורני חצר אוטומטיים (ASC) בכל בלוק, 8 בסך הכל, ועוד עגורן רכבת אחד (RMG01) מעל מסילת הרכבת. משימה בבלוק לוקחת את העגורן הפנוי מבין השניים. בשבת מכונה פנויה מסומנת SHABBAT ולא מקבלת עבודה.') +
+      'בנמל אוטומטי, ה-TOS מחליט "מה" לעשות, ומערכת בקרת הציוד (ECS) מחליטה "איך" להזיז את המכונות. כאן, כמו במסוף מלא מוקטן פי 4: 2 עגורני רציף (QC), 4 רכבים אוטונומיים (AGV), ו-2 עגורני חצר אוטומטיים (ASC) בכל בלוק, 8 בסך הכל, ועוד עגורן רכבת אחד (RMG01) מעל מסילת הרכבת. משימה בבלוק לוקחת את העגורן הפנוי מבין השניים. בשבת מכונה פנויה מסומנת SHABBAT ולא מקבלת עבודה.') +
       `<table class="grid"><tr><th>Equipment</th><th>Kind</th><th>Status</th><th>Assigned to</th><th>Current WI</th><th class="num">Moves done</th></tr>` +
       S.eq.map(e => `<tr><td class="mono"><span class="eqname">${e.id}</span></td><td>${e.desc}</td><td>${eqStatus(e)}</td><td>${e.type === 'QC' ? (e.vessel ? esc(visitById(e.vessel)?.vessel || e.vessel) : 'free') : ''}</td><td>${e.wi || ''}</td><td class="num">${e.moves}</td></tr>`).join('') + '</table>';
   },
@@ -1883,13 +2593,13 @@ const VIEWS = {
       ['Yard View + Unit Inventory', '4 בלוקים, 12 ערימות בכל אחד, עד 4 קומות. כל מכולה עם מיקום מדויק.', 'N4 מנהל את מלאי החצר ואת מיקום כל מכולה (Yard).', 'חצר קטנה מאוד. אין משקל/גובה ערימה מורכבים.'],
       ['Yard Rules', '5 חוקי הפרדה (אותה אונייה, אותו נמל יעד, אותו גודל, אותו משקל, עיכוב בנפרד) שמדליקים, מכבים ומסדרים לפי חשיבות, ובחירה בין לפזר נמוך ללערום גבוה. ניסוי שמשווה את מספר ההזזות המיותרות והערימות התפוסות.', 'מודול Expert Decking: תכנון חצר מבוסס חוקים שאפשר להגדיר, עם עדיפויות, אזורים בחצר לכל סוג מטען, וחישוב מקום לכל מכולה שנכנסת.', 'חוקים קבועים מראש בלבד, אין אזורים שמגדירים ביד, אין סידור מחדש של החצר (housekeeping) בשעות שקטות, והזזה מיותרת עוברת פשוט לערימה הנמוכה באותו בלוק.'],
       ['Rehandles', 'אם המכולה לא למעלה, מזיזים את מה שמעליה וסופרים.', 'זו המטרה העיקרית של תכנון חצר טוב: פחות הזזות מיותרות.', '-'],
-      ['Train Visits', 'ביקור רכבת עם אותם 5 שלבים כמו אונייה, קרונות של 40 רגל, מסילה אחת לרכבת אחת. הרכבת מביאה ייצוא ולוקחת יבוא שהוזמן לה. פריקה לפני העמסה, עגורן רכבת + עגורן חצר לכל הזזה, עיכוב מכס חוסם עלייה לרכבת.', 'ב-N4 רכבת היא עוד סוג של Carrier Visit (כמו אונייה ומשאית), עם קרונות (railcars), תכנון קרונות ותורי עבודה לרכבת (Rail).', 'אין סוגי קרונות שונים, אין משקל מקסימלי לקרון, אין סדר קרונות לפי יעד, ואין הרכבה ופירוק של רכבות. המכונה שעובדת על המסילה בנמל הדרום לא ידועה, ולכן עגורן רכבת אחד.'],
+      ['Train Visits', 'ביקור רכבת עם אותם 5 שלבים כמו אונייה, קרונות של 40 רגל, מסילה אחת לרכבת אחת. הרכבת מביאה ייצוא ולוקחת יבוא שהוזמן לה. פריקה לפני העמסה, עגורן רכבת + עגורן חצר לכל הזזה, עיכוב מכס חוסם עלייה לרכבת.', 'ב-N4 רכבת היא עוד סוג של Carrier Visit (כמו אונייה ומשאית), עם קרונות (railcars), תכנון קרונות ותורי עבודה לרכבת (Rail).', 'אין סוגי קרונות שונים, אין משקל מקסימלי לקרון, אין סדר קרונות לפי יעד, ואין הרכבה ופירוק של רכבות. המכונה שעובדת על המסילה במסוף אמיתי לא ידועה כאן, ולכן עגורן רכבת אחד.'],
       ['Gate', 'קבלת מכולת ייצוא, החזרת ריקה, מסירת יבוא. דחייה אם יש עיכוב.', 'N4 מנהל פעולות שער וביקורי משאיות (Gate).', 'אין אין מצלמות/OCR.'],
       ['Truck Appointments', 'תור לשעה לכל משאית, מספר מקומות לכל שעה, חלון של חצי שעה לפני ואחרי. השער דוחה משאית בלי תור, מוקדמת, מאוחרת, או עם תור למטרה אחרת. תור שלא נוצל = MISSED.', 'ב-N4 יש תורים למשאיות (Gate Appointments) עם מכסות לפי שעה, שהשער בודק כשהמשאית מגיעה. בנמלים רבים מזמינים דרך אתר או אפליקציה של הנמל.', 'אין קנס על תור שהוחמץ, אין מכסה לפי סוג משאית או חברת הובלה, והמשאית מגיעה רק כשאתה לוחץ.'],
       ['Holds & Permissions', '4 סוגי עיכוב (מכס, וטרינריה, חוב, נזק). כל סוג שייך לגוף אחד, ורק הוא רשאי לשים ולשחרר. לכל עיכוב סיבה, שעה ומי שם, והיסטוריה מלאה כולל ניסיונות שנדחו. כל עיכוב חוסם יציאה בשער וברכבת.', 'N4 מנהל עיכובים והרשאות (holds and permissions) על מכולות, וכל סוג עיכוב מוגדר עם מי רשאי לשחרר אותו.', 'סוגים קבועים, בלי משתמשים אמיתיים (בוחרים תפקיד ביד, משתמשים אמיתיים בגרסה 12). עיכוב לא חוסם העמסה לאונייה. עיכוב חוב לא משתחרר לבד כשמשלמים.'],
       ['Reefers & Hazardous', 'מכולות קירור עם טמפרטורה שנקבעה, שקעי חשמל ב-bay 06 של כל בלוק, התחממות ואזעקה בלי חשמל. מטען מסוכן לפי 7 מחלקות IMDG, טבלת הפרדה ומרחק בערימות בחצר, אזהרות, והזזה בחצר (Yard shift) שמתקנת.', 'ב-N4 יש ניטור מכולות קירור (Reefer monitoring, כולל חיבור למערכות שקוראות טמפרטורה מרחוק) ופרטי מטען מסוכן לכל מכולה (Hazards), וחוקי הפרדה בחצר ובאונייה.', 'טבלת הפרדה מקוצרת, מרחק נמדד בערימות ולא במטרים, אין הפרדה באונייה, אין חיוב על חשמל, ואין מחלקות 1 ו-7.'],
       ['Work Queues', 'כל תנועה היא הוראת עבודה בתור לפי סוג.', 'N4 יוצר הוראות עבודה ושולח משימות למערכת בקרת הציוד (ECS).', 'כל תנועה לוקחת בדיוק 15 דקות.'],
-      ['נמל הדרום אשדוד', 'הנמל בנוי לפי נמל הדרום (HCT) מוקטן פי 4: רציפים 27 ו-28, 2 עגורני רציף, 8 עגורני חצר אוטומטיים ב-4 בלוקים, מסילת רכבת. אין עבודה משישי 15:00 עד מוצאי שבת 20:00, והשער פתוח לפי השעות הרשמיות.', 'לפי מקור ציבורי יחיד, נמל הדרום משתמש כנראה במערכת TOS של Konecranes, ולא ב-N4. הסימולטור נשאר "בסגנון N4" כמודל לימוד.', 'מספר המקומות בחצר לא אמיתי (לא פורסם). אין חגים ואין שעון קיץ. כלי ההסעה בין הרציף לחצר לא ידוע, ולכן AGV.'],
+      ['נמל הלימוד', 'הנמל בנוי לפי מסוף מכולות אמיתי, עם שמות ומספרים בדויים, מוקטן פי 4: רציפים A ו-B, 2 עגורני רציף, 8 עגורני חצר אוטומטיים ב-4 בלוקים, מסילת רכבת. אין עבודה משישי 15:00 עד מוצאי שבת 20:00. המסוף בגודל מלא נמצא במסך Live Map.', 'מסופים אמיתיים משתמשים במערכות TOS שונות, לא תמיד N4. הסימולטור נשאר "בסגנון N4" כמודל לימוד.', 'מספר המקומות בחצר לא אמיתי (לא פורסם). אין חגים ואין שעון קיץ. כלי ההסעה בין הרציף לחצר לא ידוע, ולכן AGV.'],
       ['Equipment (ECS)', 'QC, AGV, ושני ASC בכל בלוק. משימה מחכה עד שכל הציוד שהיא צריכה פנוי.', 'מעל ה-ECS יש ASC Manager לעגורני חצר ו-AHT/AGV Manager לרכבים.', 'אין מסלולי נסיעה (PrimeRoute) ואין אופטימיזציה של עגורנים (RTG Optimization).'],
       ['Billing', 'תעריפים, חיובי הרמה ושער, אחסנה אחרי ימי חינם, חשבוניות, תשלום, זיכוי.', 'N4 Billing: חשבוניות, תשלומים וזיכויים.', 'אין מע"מ, מטבעות או חוזים לפי לקוח.'],
       ['טכנולוגיה', 'קובץ HTML אחד שרץ בדפדפן, בלי שרת.', 'N4 בנוי על J2EE, עם חוקים עסקיים שמוגדרים בנתונים (metadata) ולא בקוד.', 'אין משתמשים, הרשאות או מסד נתונים.'],
@@ -1919,7 +2629,7 @@ function layoutPanel() {
     return `<div class="lblock"><b>Block ${b.id}</b> <span class="note">${b.use.join(' + ')}, ${used}/${b.bays * b.rows * MAX_TIER}</span>` +
       S.eq.filter(e => e.type === 'ASC-' + b.id).map(e => `<div class="mono"><span class="eqname">${e.id}</span> ${eqStatus(e)}</div>`).join('') + '</div>';
   }).join('');
-  return `<fieldset><legend>Terminal layout &ndash; Ashdod South Port, scaled down x4</legend><div class="layout">
+  return `<fieldset><legend>Terminal layout &ndash; training port, scaled down x4</legend><div class="layout">
     <div class="sea">Sea</div><div class="quays">${quays}</div>
     <div class="lane"><span class="mono">Quay cranes: ${qcs}</span><span class="mono">AGV lane: ${agvs}</span></div>
     <div class="lblocks">${blocks}</div>
@@ -2190,7 +2900,7 @@ const FORMS = {
   },
   visit: f => {
     const v = addVisit(f.vessel.trim() || 'MV Unnamed', f.line, Math.round(Number(f.eta) * 60), Math.min(20, Math.max(0, Number(f.imports) | 0)),
-      QUAYS.some(q => q.id === f.quay) ? f.quay : '27', f.cranes === '2' ? 2 : 1);
+      QUAYS.some(q => q.id === f.quay) ? f.quay : 'A', f.cranes === '2' ? 2 : 1);
     log('VESSEL', `Visit ${v.id} ${v.vessel} created for quay ${v.quay}, ETA ${fmt(v.eta)}`);
     const other = berthConflict(v);
     if (other) flash('err', `Visit ${v.id} created, but quay ${v.quay} is booked by ${other.vessel} at that time, so ${v.vessel} would wait at anchor. Open Berth Schedule to move it to the other quay or change its ETA.`);
@@ -2276,6 +2986,7 @@ const FORMS = {
   },
 };
 
+Object.assign(ACTIONS, LIVE_ACTIONS);
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el || el.disabled) return;
@@ -2306,6 +3017,17 @@ function infoTip(el) {
 }
 const INFO = {
   th: {
+    'Machine': 'שם המכונה: QC = עגורן רציף, SP = ספרינטר, ASC = עגורן חצר (W בצד הים, L בצד היבשה).',
+    'State': 'BUSY עובדת, WAIT רוצה לעבוד אבל משהו חוסם, IDLE אין לה עבודה.',
+    'Works for': 'לעגורן רציף: אילו ספרינטרים מצוותים אליו. לספרינטר: לאיזה עגורן רציף הוא מצוות. לעגורן חצר: באיזה בלוק ובאיזה צד.',
+    'Doing now / waiting for': 'מה המכונה עושה עכשיו, במילים, או על מה היא מחכה.',
+    'Lifts': 'כמה פעמים המכונה הניחה מכולה (או טווין) מאז שהמסוף החי התחיל.',
+    'Command': 'מספר הפקודה (WI = Work Instruction, הוראת עבודה). פקודה אחת עוברת בין שלוש מכונות.',
+    'Kind': 'DISCHARGE = פריקה מהאונייה, מתחילה בעגורן הרציף. LOAD = העמסה לאונייה, הספרינטר מתחיל אותה (אחרי שעגורן החצר הכין את המכולה ב-TP).',
+    'Stage now': 'באיזה שלב מתוך 3 הפקודה נמצאת, ואיזו מכונה אחראית עליו: QC, SP או ASC.',
+    'Machine on it': 'המכונה שמבצעת עכשיו את השלב. מקף = עוד אף מכונה לא לקחה אותו.',
+    'Container': 'מספר המכולה. שני מספרים עם + = טווין: שתי מכולות של 20 רגל שעגורן הרציף והספרינטר מרימים יחד.',
+    'Where the box is': 'איפה המכולה נמצאת ברגע זה.',
     'Reefer / DG': 'מכולת קירור: לאיזו טמפרטורה היא מכוונת ומה הטמפרטורה עכשיו (C = מעלות צלזיוס). DG ומספר: מטען מסוכן ומחלקת החומר לפי IMDG. NO POWER = מכולת קירור בלי חשמל, ALARM = חמה מדי, TOO CLOSE = קרובה מדי לחומר אסור.',
     'Rule': 'שם החוק.',
     'What the yard planner does': 'מה המחשב עושה כשהחוק דולק, כשהוא בוחר ערימה למכולה שנכנסת לחצר.',
@@ -2447,6 +3169,9 @@ const INFO = {
     'מה פישטנו': 'מה חסר כאן לעומת נמל אמיתי.',
   },
   tag: {
+    'WAIT': 'מחכה: המכונה רוצה לעבוד אבל משהו חוסם אותה, למשל כל הנתיבים או כל האזורים ב-TP תפוסים. ליד כתוב על מה היא מחכה.',
+    'ACTIVE': 'הפקודה בעבודה: מכונה מבצעת עכשיו את השלב הזה.',
+    'WAITING': 'הפקודה מחכה שמכונה תיקח את השלב הבא שלה.',
     'OK': 'הכל תקין.',
     'POWER ON': 'המכולה מחוברת לשקע חשמל, והמקרר שלה עובד.',
     'NO POWER': 'מכולת קירור בלי שקע חשמל: היא מתחממת. צריך להעביר אותה לערימה עם שקע (כפתור Move).',
@@ -2483,6 +3208,23 @@ const INFO = {
     'PAID': 'החשבונית שולמה.',
   },
   part: {
+    'Live machines': 'כל המכונות של המסוף החי: 8 עגורני רציף, 36 ספרינטרים ו-32 עגורני חצר, עם המצב של כל אחת ומה היא עושה עכשיו. לחיצה על שורה בוחרת את המכונה במפה ועוקבת אחריה.',
+    'Live commands': 'הפקודות הפתוחות (DISCHARGE ו-LOAD): באיזה שלב כל אחת, איזו מכונה עליה, ואיפה המכולה עכשיו. לחיצה על שורה בוחרת את המכולה במפה ועוקבת אחריה.',
+    'Live log': 'יומן המסוף החי: פקודות שהושלמו ואירועים, החדש למעלה.',
+    'Terminal clock': 'השעה במסוף החי, עם שניות. השעון רץ לפי המהירות שבחרת.',
+    'Discharges done': 'כמה פקודות DISCHARGE (פריקה) הושלמו עד הסוף: מהאונייה, דרך נתיב, ספרינטר ו-TP, עד הערימה.',
+    'Loads done': 'כמה פקודות LOAD (העמסה) הושלמו עד הסוף: מהערימה, דרך TP, ספרינטר ונתיב, עד האונייה.',
+    'Open commands': 'כמה פקודות עוד לא הסתיימו (מחכות או בעבודה).',
+    'Quay cranes waiting': 'כמה עגורני רציף מחכים עכשיו, למשל לספרינטר שיפנה נתיב או שיביא מכולה. עגורן רציף שמחכה = האונייה מתעכבת.',
+    'Crewed sprinters without work': 'כמה ספרינטרים מצוותים לעגורן רציף אבל לא נוסעים עכשיו. הרבה = אפשר להעביר ספרינטרים לעגורן אחר (בגרסה 12.1).',
+    'Import box': 'מכולת יבוא: ירדה או תרד מאונייה.', 'Export box': 'מכולת ייצוא: מחכה בחצר לעלות לאונייה.',
+    'Reefer box': 'מכולת קירור: עומדת רק בשורות הקירור (20 עד 24) שיש בהן שקעי חשמל.',
+    'Dangerous goods (DG)': 'מסגרת אדומה = מטען מסוכן. מותר רק בבלוקים 1, 8, 9, 16 (מסומנים DG במפה).',
+    'Quay crane': 'עגורן רציף: הקו הכחול הארוך הוא הזרוע מעל האונייה, והמלבן הכהה עליה הוא העגלה שנוסעת עם המכולה.',
+    'Sprinter': 'ספרינטר: המסגרת האדומה. הוא עובר מעל המכולה, מרים אותה ונוסע. מניח רק על הקרקע (גובה 1).',
+    'Yard crane': 'עגורן חצר: הקורה הצהובה לרוחב הבלוק. הוא נוסע לאורך הבלוק. המכולה שהוא מרים מצוירת גדולה יותר עם צל: UP = למעלה מעל כל הערימות, T ומספר = יורדת או עולה בגובה הקומה הזאת.',
+    'Booked place': 'קו כתום מקווקו = מקום מוזמן: מכונה קיבלה פקודה ונוסעת אליו, ואף מכונה אחרת לא תיקח אותו.',
+    'Reefer rows': 'הרצועה הכחולה בכל בלוק: שורות 20 עד 24, עם שקעי חשמל למכולות קירור, בכל הקומות.',
     'Power sockets (reefer stack)': 'ערימה עם שקעי חשמל (קו כחול למטה): כאן עומדות מכולות הקירור. בנמל הזה זה ה-bay האחרון (06) בכל בלוק.',
     'Reefer': 'מכולת קירור (פס כחול בצד שמאל): מקרר ענק שצריך חשמל כל הזמן.',
     'Hazardous (DG)': 'מכולה עם מטען מסוכן (יהלום שחור): חומר דליק, רעיל או מאכל. יש חוקים כמה רחוק להעמיד אותה מחומרים אחרים.',
@@ -2526,9 +3268,9 @@ const INFO = {
     'Charges not yet invoiced': 'כמה כסף נרשם וממתין לחשבונית.',
     'Invoices not paid': 'כמה כסף בחשבוניות שעוד לא שולמו.',
     'Sea': 'הים. האוניות מגיעות מכאן.',
-    'Quay 27': 'רציף 27: הרציף הארוך (800 מטר במציאות). כתוב איזו אונייה עומדת לידו ובאיזה שלב, או free אם הוא פנוי.',
-    'Quay 28': 'רציף 28: הרציף הקצר (445 מטר במציאות). כתוב איזו אונייה עומדת לידו ובאיזה שלב, או free אם הוא פנוי.',
-    'Quay cranes:': 'עגורני הרציף (QC): העגורנים הגדולים שמורידים מכולות מהאונייה ומעלים אליה. בנמל הדרום יש 8, כאן 2.',
+    'Quay A': 'רציף A: הרציף הארוך (780 מטר במסוף המלא). כתוב איזו אונייה עומדת לידו ובאיזה שלב, או free אם הוא פנוי.',
+    'Quay B': 'רציף B: הרציף הקצר (420 מטר במסוף המלא). כתוב איזו אונייה עומדת לידו ובאיזה שלב, או free אם הוא פנוי.',
+    'Quay cranes:': 'עגורני הרציף (QC): העגורנים הגדולים שמורידים מכולות מהאונייה ומעלים אליה. במסוף המלא (Live Map) יש 8, כאן 2.',
     'AGV lane:': 'הרכבים האוטונומיים (AGV): רכבים בלי נהג שמסיעים מכולה בין עגורן הרציף לחצר.',
     'QC0': 'עגורן רציף. התווית לידו אומרת אם הוא פנוי, עסוק או בשבת.',
     'AGV0': 'רכב אוטונומי. התווית לידו אומרת אם הוא פנוי, עסוק או בשבת.',
@@ -2577,8 +3319,8 @@ const INFO = {
     'LOADED': 'LOADED: המכולה הועמסה על האונייה, והאונייה עוד לא יצאה.',
     'DEPARTED': 'DEPARTED: המכולה יצאה מהנמל, באונייה או במשאית. הביקור נגמר.',
     'Berth plan': 'ציר הזמן של הרציפים ליומיים, מהיום בחצות. שורה לכל רציף, פס לכל אונייה. עמידה על פס מראה את הפרטים.',
-    'Berth 27': 'רציף 27, הארוך (800 מ\' במציאות). כל פס בשורה הזאת הוא אונייה שתופסת את הרציף בזמן הזה.',
-    'Berth 28': 'רציף 28, הקצר (445 מ\' במציאות). כל פס בשורה הזאת הוא אונייה שתופסת את הרציף בזמן הזה.',
+    'Berth A': 'רציף A, הארוך (780 מ\' במסוף המלא). כל פס בשורה הזאת הוא אונייה שתופסת את הרציף בזמן הזה.',
+    'Berth B': 'רציף B, הקצר (420 מ\' במסוף המלא). כל פס בשורה הזאת הוא אונייה שתופסת את הרציף בזמן הזה.',
     'Vessel windows': 'כל אונייה שעוד לא יצאה: רציף, חלון זמן, כמה הזזות נשארו, כמה עגורנים יש לה, והאם יש התנגשות. כאן גם משנים עגורנים, רציף ושעת הגעה.',
     'Quay crane split': 'חלוקת עגורני הרציף בין האוניות: איזה עגורן עובד על איזו אונייה, ואפשרות להעביר אותו.',
     'Vessel inbound (planned)': 'פס מקווקו = האונייה עוד בדרך. החלון הוא תכנון.',
@@ -2638,8 +3380,11 @@ document.addEventListener('submit', e => {
 });
 
 if (!load()) fresh();
+liveLoad();
 render();
-window.TOS = { get state() { return S; }, cycle: () => { cycle(); render(); }, checkDigit };   // for tests and curious learners
+requestAnimationFrame(liveFrame);
+window.TOS = { get state() { return S; }, cycle: () => { cycle(); render(); }, checkDigit,
+  live: { get state() { return L; }, run: liveRun, check: liveCheck, fresh: liveFresh, newShips: liveNewShips, hit: liveHit, partHe, save: liveSave, load: liveLoad, view: LV } };   // for tests and curious learners
 </script>
 </body>
 </html>

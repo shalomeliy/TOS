@@ -18,7 +18,7 @@ async function launch() {
 const browser = await launch();
 const page = await browser.newPage();
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-page.on('pageerror', e => errors.push(e.message));
+page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 4).join(' | ')));
 await page.goto(pathToFileURL(resolve('index.html')).href);
 await page.evaluate(() => localStorage.clear());
 await page.click('[data-act="reset"]');
@@ -32,7 +32,7 @@ check(await page.evaluate(() => window.TOS.checkDigit('CSQU305438')) === 3, 'ISO
 check(/^v\d+\.\d+ \(\d\d-\d\d-\d{4}\)$/.test(await page.textContent('#appVer')), 'version shown top right: ' + await page.textContent('#appVer'));
 
 // every page renders
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
+for (const id of ['live', 'overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings']) {
   await page.click(`nav a[data-id="${id}"]`);
   check((await page.textContent('#content')).length > 100, 'page renders: ' + id);
   check(await page.isVisible('.help'), 'help box shown: ' + id);
@@ -40,7 +40,7 @@ for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules'
 
 // rule: every control (button, link, field), every screen title and every heading / column / status tag has a Hebrew tooltip.
 // Run at the start and again at the end of the day, when state-dependent buttons exist.
-const PAGES_ALL = ['overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
+const PAGES_ALL = ['live', 'overview', 'vessels', 'berth', 'stowage', 'yard', 'yardrules', 'inventory', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'work', 'equipment', 'billing', 'mapping', 'settings'];
 const auditTips = when => page.evaluate(({ pages, when }) => {
   const missing = [];
   const hebrew = t => typeof t === 'string' && /[֐-׿]/.test(t);
@@ -164,7 +164,7 @@ check(s.ver === CUR_VER, 'fresh state has the current version');
 check(s.eq.filter(e => e.type === 'QC').length === 2 && s.eq.filter(e => e.type === 'AGV').length === 4 && s.eq.filter(e => e.type.startsWith('ASC-')).length === 8, 'equipment 2 QC / 4 AGV / 8 ASC');
 check(['A', 'B', 'C', 'D'].every(b => s.eq.filter(e => e.type === 'ASC-' + b).length === 2), 'two ASCs per block');
 await page.click('nav a[data-id="overview"]');
-check((await page.textContent('#content')).includes('Quay 27') && (await page.textContent('#content')).includes('Rail siding'), 'overview shows the terminal layout');
+check((await page.textContent('#content')).includes('Quay A') && (await page.textContent('#content')).includes('Rail siding'), 'overview shows the terminal layout');
 
 // gate closed: Friday 15:00 receive is refused and creates no unit; Saturday delivery is refused
 await page.evaluate(m => { S.clock = m; render(); }, at(FRI, 15));
@@ -207,18 +207,19 @@ await page.click('[data-act="reset"]');
 await page.click('nav a[data-id="vessels"]');
 await page.click(`[data-act="arrive"][data-id="V001"]`);
 await page.fill('form[data-form="visit"] input[name="eta"]', '0');
-await page.selectOption('form[data-form="visit"] select[name="quay"]', '27');
+await page.selectOption('form[data-form="visit"] select[name="quay"]', 'A');
 await page.click('form[data-form="visit"] button');
 await page.click(`[data-act="arrive"][data-id="V003"]`);
 s = await state();
-check(s.visits[2].phase === 'INBOUND' && /quay 27/.test(s.visits[2].wait || ''), 'vessel for a taken quay waits: ' + s.visits[2].wait);
-check((await page.textContent('.flash')).includes('Waiting for quay 27'), 'waiting reason shown');
+check(s.visits[2].phase === 'INBOUND' && /quay A/.test(s.visits[2].wait || ''), 'vessel for a taken quay waits: ' + s.visits[2].wait);
+check((await page.textContent('.flash')).includes('Waiting for quay A'), 'waiting reason shown');
 const berthed = await page.evaluate(() => { depart(S.visits[0]); cycle(); const v = S.visits[2]; return { phase: v.phase, wait: v.wait, quay: v.quay }; });
-check(berthed.phase === 'ARRIVED' && !berthed.wait && berthed.quay === '27', 'waiting vessel berths once the quay is free: ' + JSON.stringify(berthed));
+check(berthed.phase === 'ARRIVED' && !berthed.wait && berthed.quay === 'A', 'waiting vessel berths once the quay is free: ' + JSON.stringify(berthed));
 
-// mapping page names the real TOS
+// mapping page: the public site names no real port (decision D4: masked names and numbers)
 await page.click('nav a[data-id="mapping"]');
-check((await page.textContent('#content')).includes('Konecranes'), 'mapping page mentions Konecranes');
+check((await page.textContent('#content')).includes('נמל הלימוד'), 'mapping page explains the training port');
+check(!/Ashdod|אשדוד|HCT/.test(await page.content()), 'no real port name anywhere on the page');
 
 // old saves: a real version 1 save converts; a broken or foreign save starts a fresh port with a message
 const { readFileSync } = await import('node:fs');
@@ -295,7 +296,7 @@ check(stow.late.isLate && stow.late.state === 'LOADED', 'late gate-in gets a fre
 // late exports for a vessel that still has imports on board must not be planned on top of an import (review finding)
 await page.click('[data-act="reset"]');
 const lateOnImports = await page.evaluate(() => {
-  const v = addVisit('MV Big', 'BLU', 0, 20, '28');
+  const v = addVisit('MV Big', 'BLU', 0, 20, 'B');
   arrive(v); startWork(v);
   for (let i = 0; i < 2; i++) { const u = addUnit({ line: 'BLU', category: 'EXPORT', iso: '22G1', visit: v.id, state: 'AT_GATE', pod: 1 + i }); newWI('GATE_IN', u); }
   let n = 0; while (v.phase === 'WORKING' && n++ < 400) cycle();
@@ -451,7 +452,7 @@ const life = await page.evaluate(() => {
   arrive(v2); startWork(v2); syncTransit();
   n = 0; while (v2.phase !== 'COMPLETE' && n++ < 200) cycle();
   // a late export, gated in while the vessel is loading, still records YARD before EC/OUT (review finding)
-  const v3 = addVisit('MV Late Test', 'BLU', 0, 4, '28');   // imports keep it WORKING while the late box arrives
+  const v3 = addVisit('MV Late Test', 'BLU', 0, 4, 'B');   // imports keep it WORKING while the late box arrives
   arrive(v3); startWork(v3); syncTransit();
   FORMS.gatein({ kind: 'EXPORT', visit: v3.id, pod: '1', line: 'BLU', iso: '22G1' }); syncTransit();
   const late = Object.values(S.units).filter(u => u.category === 'EXPORT').pop();
@@ -545,7 +546,7 @@ const crane = await page.evaluate(() => {
   return { freed, done: S.visits[1].phase, after: S.eq.filter(e => e.type === 'QC' && e.vessel).length };
 });
 check(crane.freed === 1 && crane.done === 'COMPLETE' && crane.after === 0, 'V002 asks for 1 crane and gets one when V001 completes; all cranes free at the end: ' + JSON.stringify(crane));
-// conflict: a new vessel for quay 27 while V001 still holds it (complete, not departed)
+// conflict: a new vessel for quay A while V001 still holds it (complete, not departed)
 await page.click('nav a[data-id="vessels"]');
 await page.fill('form[data-form="visit"] input[name="eta"]', '0');
 await page.click('form[data-form="visit"] button');
@@ -554,7 +555,7 @@ await page.click('nav a[data-id="berth"]');
 check(!!(await page.$('.bbar.bconf')) && (await page.textContent('#content')).includes('CONFLICT'), 'berth plan marks the conflict');
 await page.click('[data-act="moveQuay"]');
 s = await state();
-check(s.visits.at(-1).quay === '28', 'move to the other quay');
+check(s.visits.at(-1).quay === 'B', 'move to the other quay');
 const etaBefore = s.visits.at(-1).eta;
 await page.click(`[data-act="etaShift"][data-id="${s.visits.at(-1).id}:60"]`);
 s = await state();
@@ -906,9 +907,63 @@ await page.click('nav a[data-id="appts"]');
 check((await page.textContent('#content')).includes('No appointments yet'), 'appointments screen works on an old save');
 await page.click('[data-act="reset"]');
 
+// version 12: the live map of the full-size terminal. Every container is always in exactly one place while it moves
+await page.click('nav a[data-id="live"]');
+check(await page.isVisible('#lmMap'), 'live map canvas shown');
+await page.click('[data-act="lmReset"]');
+await page.click('[data-act="lmSpeed"][data-id="0"]');
+const live = () => page.evaluate(() => JSON.parse(JSON.stringify(window.TOS.live.state)));
+let L0 = await live();
+check(L0.mach.filter(m => m.type === 'QC').length === 8 && L0.mach.filter(m => m.type === 'SP').length === 36 && L0.mach.filter(m => m.type === 'ASC').length === 32, 'full layout: 8 QC, 36 sprinters, 32 yard cranes');
+check(Object.keys(L0.stacks).length === 16 && L0.stacks[1].length === 8 * 44, '16 blocks of 8 x 44');
+check(L0.speed === 0, 'Pause stops the live clock');
+check(L0.cmds.some(c => c.kind === 'DISCHARGE' && c.units.length === 2), 'a twin (two 20s in one lift) is among the discharges');
+// first seconds: DISCHARGE starts at the quay crane; nothing else moves a box before it
+const firstStage = await page.evaluate(() => { window.TOS.live.run(30); const L = window.TOS.live.state;
+  return L.cmds.filter(c => c.status === 'ACTIVE').map(c => (c.kind + ':' + L.mach.find(m => m.id === c.mach).type)); });
+check(firstStage.length && firstStage.every(x => x === 'DISCHARGE:QC'), 'DISCHARGE starts at the quay crane: ' + firstStage.slice(0, 3));
+const liveRun = await page.evaluate(() => {
+  const out = { errs: [], spDisch: false, ascDisch: false, spLoad: false, qcLoad: false, ascLoad: false, lifted: false, minutes: 0 };
+  const L = window.TOS.live.state;
+  for (let i = 0; i < 240 && L.cmds.some(c => c.status !== 'DONE'); i++) {
+    window.TOS.live.run(30, 0.5);
+    out.errs.push(...window.TOS.live.check());
+    L.cmds.filter(c => c.status === 'ACTIVE').forEach(c => { const t = L.mach.find(m => m.id === c.mach).type;
+      if (c.kind === 'DISCHARGE' && c.st === 1 && t === 'SP') out.spDisch = true; if (c.kind === 'DISCHARGE' && c.st === 2 && t === 'ASC') out.ascDisch = true;
+      if (c.kind === 'LOAD' && c.st === 0 && t === 'ASC') out.ascLoad = true; if (c.kind === 'LOAD' && c.st === 1 && t === 'SP') out.spLoad = true; if (c.kind === 'LOAD' && c.st === 2 && t === 'QC') out.qcLoad = true; });
+    if (L.mach.some(m => m.type === 'ASC' && m.carry.length && m.tz > 3)) out.lifted = true;
+  }
+  out.open = L.cmds.filter(c => c.status !== 'DONE').length; out.minutes = Math.round(L.t / 60); out.disch = L.stats.disch; out.load = L.stats.load;
+  out.spOnly1 = L.mach.filter(m => m.type === 'SP').every(m => m.carry.length === 0);
+  return out;
+});
+check(!liveRun.errs.length, 'live terminal: every box in one place, no stack above 6: ' + liveRun.errs.slice(0, 3));
+check(liveRun.open === 0, `both ships finished (${liveRun.disch} discharges, ${liveRun.load} loads in ${liveRun.minutes} min), open: ${liveRun.open}`);
+check(liveRun.spDisch && liveRun.ascDisch, 'DISCHARGE goes quay crane > sprinter > yard crane');
+check(liveRun.ascLoad && liveRun.spLoad && liveRun.qcLoad, 'LOAD goes yard crane (to TP) > sprinter > quay crane');
+check(liveRun.lifted, 'a yard crane is seen carrying a box up in the air');
+// hover explains every part of the map in Hebrew
+const hovers = await page.evaluate(() => { const T = window.TOS.live, L = T.state, out = [];
+  const qc = L.mach.find(m => m.type === 'QC'), sp = L.mach.find(m => m.type === 'SP'), asc = L.mach.find(m => m.type === 'ASC');
+  [[qc.x, 40], [sp.x, sp.y], [asc.tx, asc.gy], [10, 10], [blockXp(3) + 2, 400], [blockXp(3) + 2, 160], [qc.home, 79], [990, 150], [500, 128], [500, 800]].forEach(([x, y]) => { const h = T.hit(x, y); out.push(h ? T.partHe(h) : ''); });
+  function blockXp(b) { return 70 + (b - 1) * 42 + (b > 8 ? 50 : 0); }
+  return out; });
+check(hovers.every(t => /[\u0590-\u05FF]/.test(t)), 'every part of the live map explains itself in Hebrew: ' + hovers.map(t => t.slice(0, 15)).join(' | '));
+// a live save from another version starts a new live terminal with a message; the small yard is not touched
+await page.evaluate(() => { localStorage.setItem('tos-live', JSON.stringify({ ver: 0, mach: [], units: {} })); window.TOS.live.load(); });
+check(await page.evaluate(() => window.TOS.live.state.ver === 1 && /גרסה אחרת/.test(window.TOS.live.view.msg || '')), 'old live save: new live terminal with a clear message');
+await page.waitForTimeout(600);
+check(await page.isDisabled('[data-act="lmNewShips"]'), 'New ships is off while the ships still work');
+await page.evaluate(() => { const L = window.TOS.live.state; for (let i = 0; i < 300 && L.cmds.some(c => c.status !== 'DONE'); i++) window.TOS.live.run(30); window.TOS.live.view.panelAt = 0; });
+await page.waitForTimeout(700);
+await page.click('[data-act="lmNewShips"]');
+check(await page.evaluate(() => window.TOS.live.state.cmds.filter(c => c.status !== 'DONE').length > 50), 'New ships brings new work');
+await page.click('[data-act="lmSpeed"][data-id="20"]');
+check(await page.evaluate(() => window.TOS.live.state.speed === 20), 'speed x20 set');
+
 // phone width: no horizontal scroll on the page itself
 await page.setViewportSize({ width: 390, height: 800 });
-for (const id of ['overview', 'vessels', 'berth', 'stowage', 'yardrules', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
+for (const id of ['live', 'overview', 'vessels', 'berth', 'stowage', 'yardrules', 'holds', 'reefer', 'inspector', 'gate', 'appts', 'rail', 'equipment']) {
   await page.click(`nav a[data-id="${id}"]`);
   check(await page.evaluate(() => document.documentElement.scrollWidth <= 390), 'no page-level horizontal scroll at 390px: ' + id);
 }
